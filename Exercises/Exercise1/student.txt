@@ -33,5 +33,17 @@
         ],
         "link": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTHZbtv9oFC2W0d4AV_Cj_4VWG4BA8lak7R-g&s",
         "favorite series": "nikita"
+    },
+    {
+        "name": "Shlomi",
+        "last name": "Fridman",
+        "mail": "Shlomif99@gmail.com",
+        "courses": [
+            "web",
+            "cloud",
+            "Compiling"
+        ],
+        "link": "https://www.youtube.com/watch?v=sVjk5nrb_lI",
+        "favorite series": "Futurama"
     }
 ]
