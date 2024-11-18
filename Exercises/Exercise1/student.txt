@@ -46,7 +46,7 @@
         "link": "https://www.youtube.com/watch?v=sVjk5nrb_lI",
         "favorite series": "Futurama"
     },
-	    {
+    {
         "name": "Omer",
         "last name": "Goldstein",
         "mail": "Omer.Goldstein@e.braude.ac.il",
@@ -57,5 +57,17 @@
         ],
         "link": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         "favorite series": "Arcane"
+    },
+    {
+        "name": "Vladi",
+        "last name": "Tritner",
+        "mail": "tritner111@gmail.com",
+        "courses": [
+            "Introduction to the cloud",
+            "WEB technologies",
+            "automata"
+        ],
+        "link": "https://www.netflix.com",
+        "favorite series": "Breaking Bad"
     }
 ]
