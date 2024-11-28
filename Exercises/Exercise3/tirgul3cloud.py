@@ -29,11 +29,13 @@ n = ""
 
 tozeret_dropdown = widgets.Dropdown(
     options=data_df['tozeret_nm'].unique(),
-    description="Tozeret: "
+    description="Tozeret: ",
+    style={'description_width': "auto"}
 )
 nickname_dropdown = widgets.Dropdown(
     options=[],
-    description="Kinuy Mishari: "
+    description="Kinuy Mishari: ",
+    style={'description_width': "auto"}
 )
 output_res = widgets.Output()
 
