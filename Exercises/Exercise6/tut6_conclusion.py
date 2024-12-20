@@ -138,7 +138,7 @@ def crawl_website(base_url, max_pages):
     urls_to_crawl = [base_url]  # Initialize the queue with the base URL
     crawled_count = 0  # Counter for the number of crawled pages
     urls_index = {}
-    ignore_urls = ["mp3", "mp4", "downloads"]
+    ignore_urls = ["form", "mp3", "mp4", "downloads"]
 
     while urls_to_crawl and crawled_count < max_pages:
         current_url = urls_to_crawl.pop(0)
@@ -146,7 +146,7 @@ def crawl_website(base_url, max_pages):
         if current_url in crawled_urls:
             continue  # Skip already crawled URLs
 
-        print(f"Crawling: {current_url}")
+        print(f"Crawling {crawled_count+1}: {current_url}")
         page_content = fetch_page_crawler(current_url, rp)
 
         if page_content:
@@ -156,7 +156,9 @@ def crawl_website(base_url, max_pages):
             # Extract and queue new links to crawl
             new_links = extract_links(page_content, base_url)
             for link in new_links:
-                cond = any(bad_url in link for bad_url in ignore_urls)
+                cond1 = any(bad_url in link for bad_url in ignore_urls)
+                cond2 = any(u for u in crawled_urls if (f"{u}#" in link))
+                cond = cond1 or cond2
                 if link not in crawled_urls and link not in urls_to_crawl and not cond:
                     urls_to_crawl.append(link)
 
@@ -198,7 +200,7 @@ MAX_PAGES = 200
 
 urls, urls_index = crawl_website(BASE_URL, MAX_PAGES)
 
-"""get the index from DB"""
+"""get the index from DB and reset it for crawling results"""
 
 ourIndex = FBconn.get('/Index/', None)
 for k,v in ourIndex.items():
