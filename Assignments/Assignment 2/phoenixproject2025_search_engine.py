@@ -240,6 +240,29 @@ class CrawlerService:
 
       return links
 
+"""Query Service"""
+
+class QueryService:
+
+  # enable boolean search
+
+  def __init__(self, indexService):
+    self.indexService = indexService
+    self.query_history = []   # query => urls
+
+  def query(self, query):
+    res_urls = []
+    # add result to history
+    return res_urls
+
+  def rank_url(self, url):
+    rank = 1
+    # rank based on lab6
+    return rank
+
+  def get_history(self):
+    pass
+
 """The index we defined"""
 
 init_index = [
