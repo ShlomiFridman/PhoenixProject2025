@@ -9,6 +9,9 @@ Original file is located at
 github link: https://github.com/ShlomiFridman/PhoenixProject2025
 """
 
+from google.colab import drive
+drive.mount('/content/drive')
+
 !pip install requests beautifulsoup4
 !pip install requests beautifulsoup4 nltk
 !pip install firebase
@@ -23,6 +26,18 @@ import re
 from firebase import firebase
 
 """Utils functions"""
+
+def read_txtfile(fileName):
+    file_path = '/content/drive/My Drive/' + fileName
+    with open(file_path, 'r') as file:
+        allText = ""
+        for line in file:
+          allText += line
+        wordsList =  allText.split()
+        wordsSet =  set(wordsList)
+    return wordsSet
+
+#TODO add read image file
 
 def index_words(soup):
     index_res = {}
@@ -39,7 +54,8 @@ def index_words(soup):
     return index_res
 
 def remove_stop_words(p_index):
-    stop_words = {'a', 'an', 'the', 'and', 'or', 'in', 'on', 'at', 'to'}
+    #stop_words = {'a', 'an', 'the', 'and', 'or', 'in', 'on', 'at', 'to'}
+    stop_words = read_txtfile("stopwords_en.txt")
 
     for stop_word in stop_words:
         if stop_word in p_index:
@@ -81,7 +97,8 @@ class FirebaseService:
 
 class IndexService:
 
-  def __init__(self, index):
+  def __init__(self, index, firebaseService):
+    self.firebaseService = firebaseService
     self.rev_index = {}
     self.urls_index = {}
     stemmer = PorterStemmer()
@@ -125,6 +142,24 @@ class IndexService:
           self.urls_index[urls[j]] = {}
         self.urls_index[urls[j]][ind] = cntrs[j]
     print("index updated")
+
+  def add_new_word(self):
+    pass
+
+  def remove_word(self):
+    pass
+
+  def add_new_url(self, url):
+    pass
+
+  def remove_url(self, url):
+    pass
+
+  def save_in_db(self):
+    pass
+
+  def load_from_db(self):
+    pass
 
   def index_toString(self):
     str = ''
@@ -248,20 +283,86 @@ class QueryService:
 
   def __init__(self, indexService):
     self.indexService = indexService
+    # self.query_history_results = {}   # query => urls
     self.query_history = []   # query => urls
 
   def query(self, query):
-    res_urls = []
-    # add result to history
-    return res_urls
+    url_res_set = set()
+    query_words = set(re.findall(r'\w+', query.lower()))
+    stemmer = PorterStemmer()
+    stemmed_query = set()
+    rev_index = self.indexService.get_reverse_index()
+    for word in query_words:
+      stemmed_word = stemmer.stem(word)
+      stemmed_query.add(stemmed_word)
+      #add url to dict
+      if stemmed_word in rev_index:
+        url_res_set.update(rev_index[stemmed_word]["DocIDs"])
 
-  def rank_url(self, url):
+    ranked_url_res = {}
+    for u in url_res_set:
+      ranked_url_res[u] = self.rank_url(u, stemmed_query)
+    ranked_url_res = sorted(ranked_url_res.items(), key=lambda item: item[1], reverse=True)
+    # add result to history
+    # self.query_history[query] = ranked_url_res
+    self.query_history.append({'query':query, 'results':ranked_url_res})
+    # print(ranked_url_res)
+    return ranked_url_res
+
+  def rank_url(self, url, query_words):
     rank = 1
+    # resultService = ResultService()
     # rank based on lab6
+    url_index = self.indexService.get_url_index(url)
+    for word in query_words:
+      if word in url_index:
+        rank = rank*1/url_index[word]
+    rank = 1-rank
+    # print(rank)
     return rank
 
   def get_history(self):
-    pass
+    return self.query_history
+
+"""Result Service"""
+
+# Lab 7
+# result_service.py
+class ResultService:
+    def __init__(self, index_service, query_service):
+        self.index_service = index_service
+        self.query_service = query_service
+        self.results = {}
+
+    def format_results(self, query_id):
+        """Format search results for display"""
+        try:
+            query = self.query_service.queries.get(query_id)
+            if not query:
+                return {'error': 'Query not found'}
+
+            formatted_results = []
+            for doc_id in query['results']:
+                doc = self.index_service.get_document(doc_id)
+                if doc:
+                    formatted_results.append({
+                        'doc_id': doc_id,
+                        'title': doc['title'],
+                        'snippet': doc['content'][:100] + '...'
+                    })
+
+            result_id = str(len(self.results) + 1)
+            result = {
+                'id': result_id,
+                'query_id': query_id,
+                'formatted_results': formatted_results,
+                'count': len(formatted_results)
+            }
+            self.results[result_id] = result
+            return result
+
+        except Exception as e:
+            return {'error': str(e)}
 
 """The index we defined"""
 
@@ -269,6 +370,7 @@ init_index = [
     'SAAS',
     'PAAS',
     'IAAS',
+    'FAAS',
     'Private',
     'Public',
     'Hybrid',
@@ -300,24 +402,40 @@ init_index = [
     'Google',
     'Amazon',
     'AI',
+    'Artificial',
+    'Intelligence',
 ]
-
-indexService = IndexService(init_index)
-
-crawlerService = CrawlerService(indexService)
 
 firebaseService = FirebaseService()
 
-# indexService.set_index(firebaseService.get_index_from_DB())
-# print("Index from firebase:")
-# indexService.print_index()
+indexService = IndexService(init_index, firebaseService)
+
+crawlerService = CrawlerService(indexService)
+
+queryService = QueryService(indexService)
+query = queryService.query("chatbot ai")
+print([k['query'] for k in queryService.get_history()])
+
+# main.py
+def main():
+    # Initialize services
+    indexService = IndexService(init_index)
+    crawlerService = CrawlerService(indexService)
+    resultService = ResultService(indexService, queryService)
+
+#if __name__ == "__main__":
+#  main()
+
+indexService.set_index(firebaseService.get_index_from_DB())
+print("Index from firebase:")
+print(indexService.index_toString())
 
 """Processing the index and saving it in DB"""
 
 firebaseService.update_index_in_db(indexService.get_reverse_index())
 
 # To limit the number of pages to crawl
-MAX_PAGES = 100
+MAX_PAGES = 10
 crawlerService.crawl_website('https://www.ibm.com/us-en', MAX_PAGES)
 crawlerService.crawl_website('https://www.ibm.com/topics', MAX_PAGES)
 
@@ -340,10 +458,10 @@ def displayCntrGraph(index):
   plt.title("Appearance of indexes in IBM:")
 
   ax = sns.barplot(x="Index", y="Appearances",
-                  errwidth=0, data=ind_data)
+                  err_kws={'linewidth': 0}, data=ind_data) #errwidth=0 will be deprecated in v0.15.0
   for i in ax.containers:
     ax.bar_label(i,)
-  plt.xticks(rotation=45)
+  plt.xticks(rotation=60)
   plt.show()  # Add this to display the plot
   plt.close()  # Close the figure to free memory
 
@@ -351,11 +469,11 @@ displayCntrGraph(indexService.get_reverse_index())
 
 searchHistory = []
 
-"""TODO search engine by text field, you can use the code from exercise 6, save the search history
-
-TODO 3 tabs: search results, graph that shows the rank of each page, graph for the website cover of the query keywords
+"""TODO 3 tabs: search results, graph that shows the rank of each page, graph for the website cover of the query keywords
 
 TODO add the group logo from drive
 
 TODO enable shering, make the link public
+
+TODO edit_index: print_index, add_new_word, remove_from_index, add_url, remove_url, get_index_from_db, save_index_in_db, exit menu
 """
