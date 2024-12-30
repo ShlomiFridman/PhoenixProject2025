@@ -9,8 +9,8 @@ Original file is located at
 github link: https://github.com/ShlomiFridman/PhoenixProject2025
 """
 
-from google.colab import drive
-drive.mount('/content/drive')
+# from google.colab import drive
+# drive.mount('/content/drive')
 
 !pip install requests beautifulsoup4
 !pip install requests beautifulsoup4 nltk
@@ -54,8 +54,8 @@ def index_words(soup):
     return index_res
 
 def remove_stop_words(p_index):
-    #stop_words = {'a', 'an', 'the', 'and', 'or', 'in', 'on', 'at', 'to'}
-    stop_words = read_txtfile("stopwords_en.txt")
+    stop_words = {'a', 'an', 'the', 'and', 'or', 'in', 'on', 'at', 'to'}
+    # stop_words = read_txtfile("stopwords_en.txt")
 
     for stop_word in stop_words:
         if stop_word in p_index:
@@ -130,7 +130,7 @@ class IndexService:
   def get_url_index(self, url):
     return self.urls_index.get(url,{})
 
-  def set_index(self, newRevIndex):
+  def set_rev_index(self, newRevIndex):
     self.rev_index = newRevIndex
     self.urls_index = {}
 
@@ -144,21 +144,30 @@ class IndexService:
     print("index updated")
 
   def add_new_word(self):
+    # loop through url_index and build the word_dict for rev_index
     pass
 
   def remove_word(self):
+    # remove word from rev_index
     pass
 
   def add_new_url(self, url):
+    # crawl the new url, get it's soup
+    # build it's index, and add it to self.url_index
+    # and update rev_index
     pass
 
   def remove_url(self, url):
+    # update rev_index, every word that have the url remove it and it's cntr
+    # remove the url from self.url_index
     pass
 
   def save_in_db(self):
+    # call firebaseService.save_rev_index(self.rev_index)
     pass
 
   def load_from_db(self):
+    # call self.set_rev_index(firebaseService.get_rev_index())
     pass
 
   def index_toString(self):
@@ -284,9 +293,18 @@ class QueryService:
   def __init__(self, indexService):
     self.indexService = indexService
     # self.query_history_results = {}   # query => urls
-    self.query_history = []   # query => urls
+    # self.query_history = []   # query => urls
 
   def query(self, query):
+    if "AND" in query:
+      ind=query.find("AND")
+      return self.__andResults(self.query(query[:ind]), self.query(query[ind+3:]))
+    elif "OR" in query:
+      ind=query.find("OR")
+      return self.__orResults(self.query(query[:ind]), self.query(query[ind+3:]))
+    return self.__queryByString(query)
+
+  def __queryByString(self, query):
     url_res_set = set()
     query_words = set(re.findall(r'\w+', query.lower()))
     stemmer = PorterStemmer()
@@ -299,15 +317,44 @@ class QueryService:
       if stemmed_word in rev_index:
         url_res_set.update(rev_index[stemmed_word]["DocIDs"])
 
-    ranked_url_res = {}
-    for u in url_res_set:
-      ranked_url_res[u] = self.rank_url(u, stemmed_query)
-    ranked_url_res = sorted(ranked_url_res.items(), key=lambda item: item[1], reverse=True)
+    ranked_url_res = []
+    for url_val in url_res_set:
+      ranked_url_res.append({'url':url_val, 'rank':self.rank_url(url_val, stemmed_query)})
+    ranked_url_res = sorted(ranked_url_res, key=lambda item: item['rank'], reverse=True)
     # add result to history
     # self.query_history[query] = ranked_url_res
-    self.query_history.append({'query':query, 'results':ranked_url_res})
-    # print(ranked_url_res)
+    # self.query_history.append({'query':query, 'results':ranked_url_res})
+    # print(type(ranked_url_res))
     return ranked_url_res
+
+  def __andResults(self, lst1, lst2):
+    res_dict = {item['url']: item['rank'] for item in lst2}
+    intersection = []
+    for item in lst1:
+        url = item['url']
+        if url in res_dict:
+            new_rank = (item['rank'] + res_dict[url])/2
+            intersection.append({'url': url, 'rank': new_rank})
+
+    # Sort the result by rank in descending order
+    return sorted(intersection, key=lambda item: item['rank'], reverse=True)
+
+  def __orResults(self, lst1, lst2):
+    combined_dict = {}
+
+    for item in lst1:
+        url = item['url']
+        rank = item['rank']
+        combined_dict[url] = max(combined_dict.get(url, float('-inf')), rank)
+    for item in lst2:
+        url = item['url']
+        rank = item['rank']
+        combined_dict[url] = max(combined_dict.get(url, float('-inf')), rank)
+
+    return sorted(
+        [{'url': url, 'rank': rank} for url, rank in combined_dict.items()],
+        key=lambda item: item['rank'],
+        reverse=True)
 
   def rank_url(self, url, query_words):
     rank = 1
@@ -321,20 +368,18 @@ class QueryService:
     # print(rank)
     return rank
 
-  def get_history(self):
-    return self.query_history
+  # def get_history(self):
+  #   return self.query_history
 
 """Result Service"""
 
 # Lab 7
 # result_service.py
-class ResultService:
-    def __init__(self, index_service, query_service):
-        self.index_service = index_service
-        self.query_service = query_service
-        self.results = {}
+class HistoryService:
+    def __init__(self):
+        self.history = {}
 
-    def format_results(self, query_id):
+    def add_to_history(self, query_id):
         """Format search results for display"""
         try:
             query = self.query_service.queries.get(query_id)
@@ -363,6 +408,9 @@ class ResultService:
 
         except Exception as e:
             return {'error': str(e)}
+
+    def get_history(self):
+      return self.query_history
 
 """The index we defined"""
 
@@ -412,19 +460,96 @@ indexService = IndexService(init_index, firebaseService)
 
 crawlerService = CrawlerService(indexService)
 
+indexService.set_rev_index(firebaseService.get_index_from_DB())
+# print(indexService.index_toString())
+
 queryService = QueryService(indexService)
-query = queryService.query("chatbot ai")
-print([k['query'] for k in queryService.get_history()])
+# query1 = queryService.query("PAAS")
+# query2 = queryService.query("SAAS")
+# query3 = queryService.query("SAAS OR PAAS")
+# query4 = queryService.query("SAAS AND PAAS")
+# print(query1)
+# print(query2)
+# print(query3)
+# print(query4)
 
-# main.py
-def main():
-    # Initialize services
-    indexService = IndexService(init_index)
-    crawlerService = CrawlerService(indexService)
-    resultService = ResultService(indexService, queryService)
+historyService = HistoryService()
 
-#if __name__ == "__main__":
-#  main()
+indexService.get_reverse_index()
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import ipywidgets as widgets
+from IPython.display import display
+import json
+from collections import defaultdict
+
+class GraphService:
+
+  def __init__(self, rev_index):
+    self.rev_index = rev_index
+    self.index_df_heatmap = None
+    self.index_df_bar = None
+    # לקחת את האינדקס שאתה מקבל ותבנה את ה-dataframe
+    self.__buildDFs(rev_index)
+
+  def __buildDFs(self, rev_index):
+    ## TODO תבנה את המידע מהאידקס שאתה מקבל כפרמטר
+    ## TODO שמור את המידע ב - self.index_df_heatmap
+    ## TODO שמור את המידע ב - self.index_df_bar
+    return
+
+  def get_heatmap(self):
+    return self.__create_heatmap()
+
+  def get_barChart(self):
+    return self.__create_barChart()
+
+  def __create_heatmap(self):
+    heatmap_res = None
+    ## TODO תיצור את הגרף עם המידע ב- self.index_df_heatmap
+    return heatmap_res
+
+  def __create_barChart(self):
+    barChart_res = None
+    ## TODO תיצור את הגרף עם המידע ב- self.index_df_bar
+    return barChart_res
+
+# Display Tabs
+def display_tabs(heatmap_output, bar_chart_output):
+    """Creates and displays the tabs containing the graphs."""
+    tabs = widgets.Tab(children=[heatmap_output, bar_chart_output])
+    tabs.set_title(0, "Heatmap")
+    tabs.set_title(1, "Bar Chart")
+    display(tabs)
+
+graphService = GraphService(indexService.get_reverse_index())
+# Generate the outputs for each graph
+heatmap_output = graphService.get_barChart()
+bar_chart_output = graphService.get_heatmap()
+
+# Display the tabs with the graphs
+display_tabs(heatmap_output, bar_chart_output)
+
+# q = "adsadasdasdas"
+# q_history = historyService.get_history_of(q)
+# if q_history:
+#   pass  # display this as result
+# else:
+#   q_res = queryService.query(q)
+#   historyService.add_to_history(q_res)
+#   pass  # display this as result
+
+# # main.py
+# def main():
+#     # Initialize services
+#     indexService = IndexService(init_index)
+#     crawlerService = CrawlerService(indexService)
+#     # resultService = ResultService(indexService, queryService)
+
+# #if __name__ == "__main__":
+# #  main()
 
 indexService.set_index(firebaseService.get_index_from_DB())
 print("Index from firebase:")
@@ -434,12 +559,12 @@ print(indexService.index_toString())
 
 firebaseService.update_index_in_db(indexService.get_reverse_index())
 
-# To limit the number of pages to crawl
-MAX_PAGES = 10
-crawlerService.crawl_website('https://www.ibm.com/us-en', MAX_PAGES)
-crawlerService.crawl_website('https://www.ibm.com/topics', MAX_PAGES)
+# # To limit the number of pages to crawl
+# MAX_PAGES = 10
+# crawlerService.crawl_website('https://www.ibm.com/us-en', MAX_PAGES)
+# crawlerService.crawl_website('https://www.ibm.com/topics', MAX_PAGES)
 
-firebaseService.update_index_in_db(indexService.get_reverse_index())
+# firebaseService.update_index_in_db(indexService.get_reverse_index())
 
 import pandas as pd
 import matplotlib.pyplot as plt
