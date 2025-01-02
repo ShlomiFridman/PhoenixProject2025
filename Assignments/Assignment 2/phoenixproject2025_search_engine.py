@@ -24,6 +24,7 @@ from urllib.robotparser import RobotFileParser
 from nltk.stem import PorterStemmer
 import re
 from firebase import firebase
+import spacy
 
 """Utils functions"""
 
@@ -54,6 +55,8 @@ def index_words(soup):
     return index_res
 
 def remove_stop_words(p_index):
+    # nlp = spacy.load("en_core_web_sm")  # Load a small English model
+    # stop_words = nlp.Defaults.stop_words
     stop_words = {'a', 'an', 'the', 'and', 'or', 'in', 'on', 'at', 'to'}
     # stop_words = read_txtfile("stopwords_en.txt")
 
@@ -84,26 +87,33 @@ class FirebaseService:
   def __init__(self, db_url = 'https://phoenixhw2-default-rtdb.europe-west1.firebasedatabase.app/'):
     self.FBconn = firebase.FirebaseApplication(db_url,None)
 
-  def get_index_from_DB(self):
+  def get_rev_index_from_DB(self):
     return self.FBconn.get('/Index/', None)
 
-  def update_index_in_db(self, index_p):
+  def update_rev_index_in_db(self, index_p):
     for k,v in index_p.items():
       self.FBconn.put("/Index/", k, v)
       print(f"update made for index={k} ({v['term']})")
-    print("Updated given index in DB")
+    print("Updated given rev index in DB")
+
+  # def get_url_index_from_DB(self):
+  #   return self.FBconn.get('/URLs_Index/', None)
+
+  # def update_url_index_in_db(self, index_p):
+  #   for k,v in index_p.items():
+  #     self.FBconn.put("/URLs_Index/", k, v)
+  #     print(f"update made for index_url={k}")
+  #   print("Updated given url index in DB")
 
 """index service for maintain"""
 
 class IndexService:
 
   def __init__(self, index, firebaseService):
+    self.init_index_vals = index
+    self.stemmer = PorterStemmer()
     self.firebaseService = firebaseService
-    self.rev_index = {}
-    self.urls_index = {}
-    stemmer = PorterStemmer()
-    for w in index:
-      self.rev_index[stemmer.stem(w)] = {"term":w, "DocIDs": [], "DocIDs_cntrs": []}
+    self.resetService()
 
   def process_soup(self, url, soup):
     if not soup:
@@ -118,7 +128,12 @@ class IndexService:
       if ind not in u_index:
         continue
       elif url in ind_val['DocIDs']:
-        continue
+        url_i = ind_val["DocIDs"].index(url)
+        del ind_val["DocIDs"][url_i]
+        del ind_val["DocIDs_cntrs"][url_i]
+      if "DocIDs" not in ind_val:
+        ind_val['DocIDs'] = []
+        ind_val['DocIDs_cntrs'] = []
       ind_val['DocIDs'].append(url)
       ind_val['DocIDs_cntrs'].append(u_index[ind])
 
@@ -131,6 +146,7 @@ class IndexService:
     return self.urls_index.get(url,{})
 
   def set_rev_index(self, newRevIndex):
+    self.init_index_vals = [vals['term'] for ind,vals in newRevIndex.items()]
     self.rev_index = newRevIndex
     self.urls_index = {}
 
@@ -143,42 +159,54 @@ class IndexService:
         self.urls_index[urls[j]][ind] = cntrs[j]
     print("index updated")
 
-  def add_new_word(self):
-    # loop through url_index and build the word_dict for rev_index
-    pass
+  def add_new_word(self, word):
+    stemmedWord = self.stemmer.stem(word)
+    if (stemmedWord in self.rev_index):
+      return False
+    self.init_index_vals.append(word)
+    self.rev_index[stemmedWord] = {"term": word, "DocIDs": [], "DocIDs_cntrs": []}
+    return True
 
-  def remove_word(self):
-    # remove word from rev_index
-    pass
-
-  def add_new_url(self, url):
-    # crawl the new url, get it's soup
-    # build it's index, and add it to self.url_index
-    # and update rev_index
-    pass
+  def remove_word(self, word):
+    stemmedWord = self.stemmer.stem(word)
+    if stemmedWord not in self.rev_index:
+      return False
+    self.init_index_vals.remove(self.rev_index[stemmedWord]['term'])
+    del self.rev_index[stemmedWord]
+    return True
 
   def remove_url(self, url):
-    # update rev_index, every word that have the url remove it and it's cntr
-    # remove the url from self.url_index
-    pass
+    if url not in self.urls_index:
+      return False
+    for word,cntr in self.urls_index.items():
+      ind = self.rev_index["DocIDs"].index(url)
+      del self.rev_index["DocIDs"][ind]
+      del self.rev_index["DocIDs_cntrs"][ind]
+    return True
 
   def save_in_db(self):
+    firebaseService.update_rev_index_in_db(self.rev_index)
     # call firebaseService.save_rev_index(self.rev_index)
-    pass
 
   def load_from_db(self):
-    # call self.set_rev_index(firebaseService.get_rev_index())
-    pass
+    self.set_rev_index(firebaseService.get_rev_index())
+    #pass
 
   def index_toString(self):
     str = ''
     for ind,vals in self.rev_index.items():
-      str += f"Index {ind}"
-      str += f"\tTerm={vals['term']}"
-      str += "\tDocIDs="
+      str += f"Index '{ind}'\n"
+      str += f"\tTerm='{vals['term']}'\n"
+      str += "\tDocIDs=\n"
       for j in range(len(vals['DocIDs'])):
-        str += f"\t\tURL No.{j}: {vals['DocIDs'][j]} - {vals['DocIDs_cntrs'][j]} times"
+        str += f"\t\tURL No.{j}: {vals['DocIDs'][j]} - {vals['DocIDs_cntrs'][j]} times\n"
     return str
+
+  def resetService(self):
+    self.rev_index = {}
+    self.urls_index = {}
+    for w in self.init_index_vals:
+      self.rev_index[self.stemmer.stem(w)] = {"term":w, "DocIDs": [], "DocIDs_cntrs": []}
 
 """Crawling service"""
 
@@ -227,6 +255,21 @@ class CrawlerService:
 
       print(f"\nCrawled {len(current_crawled_urls)} pages.")
       return current_crawled_urls
+
+  def crawl_single_url(self, url):
+      rp = self.__check_robot(url)  # Check the robots.txt file
+      print(f"Crawling {self.crawled_count+1}: {url}")
+      page_content = self.__fetch_page_crawler(url, rp)
+
+      if page_content:
+        self.crawled_urls.add(url)
+        self.crawled_count += 1
+
+        soup = BeautifulSoup(page_content, 'html.parser')
+        self.indexService.process_soup(url, soup)
+        time.sleep(2)  # Sleep for 2 seconds between requests (politeness)
+
+
 
   def get_crawled_urls(self):
     return self.crawled_urls
@@ -379,47 +422,6 @@ class QueryService:
   # def get_history(self):
   #   return self.query_history
 
-"""Result Service"""
-
-# # Lab 7
-# # result_service.py
-# class HistoryService:
-#     def __init__(self):
-#         self.history = {}
-
-#     def add_to_history(self, query_id, ):
-#         """Format search results for display"""
-#         try:
-#             query = self.query_service.queries.get(query_id)
-#             if not query:
-#                 return {'error': 'Query not found'}
-
-#             formatted_results = []
-#             for doc_id in query['results']:
-#                 doc = self.index_service.get_document(doc_id)
-#                 if doc:
-#                     formatted_results.append({
-#                         'doc_id': doc_id,
-#                         'title': doc['title'],
-#                         'snippet': doc['content'][:100] + '...'
-#                     })
-
-#             result_id = str(len(self.results) + 1)
-#             result = {
-#                 'id': result_id,
-#                 'query_id': query_id,
-#                 'formatted_results': formatted_results,
-#                 'count': len(formatted_results)
-#             }
-#             self.results[result_id] = result
-#             return result
-
-#         except Exception as e:
-#             return {'error': str(e)}
-
-#     def get_history(self):
-#       return self.query_history
-
 """The index we defined"""
 
 init_index = [
@@ -463,26 +465,25 @@ init_index = [
 ]
 
 firebaseService = FirebaseService()
-
 indexService = IndexService(init_index, firebaseService)
-
+queryService = QueryService(indexService)
 crawlerService = CrawlerService(indexService)
 
-indexService.set_rev_index(firebaseService.get_index_from_DB())
-# print(indexService.index_toString())
+# To limit the number of pages to crawl
+MAX_PAGES = 10
+crawlerService.crawl_website('https://www.ibm.com/us-en', MAX_PAGES)
+crawlerService.crawl_website('https://www.ibm.com/topics', MAX_PAGES)
 
-queryService = QueryService(indexService)
-query1 = queryService.query("PAAS")
-# query2 = queryService.query("SAAS")
-query3 = queryService.query("SAAS OR PAAS")
-# query4 = queryService.query("SAAS AND PAAS")
-print(query1)
+print(indexService.index_toString())
+
+# indexService.set_rev_index(firebaseService.get_rev_index_from_DB())
+# # print(indexService.index_toString())
+
+# query1 = queryService.query("PAAS")
+# query2 = queryService.query("SAAS OR PAAS")
+# print(query1)
 # print(query2)
-print(query3)
-# print(query4)
-print(queryService.get_history())
-
-indexService.get_reverse_index()
+# print(queryService.get_history())
 
 #משימה ששלומי נתן לישראל 31.12.24
 #בוצעה
@@ -647,6 +648,7 @@ class SearchEngineUI:
         self.results_output = widgets.Output()
 
         # Attach event handler
+        self.query_input.on_submit(self.perform_search)
         self.search_button.on_click(self.perform_search)
 
         # Layout the GUI
@@ -685,11 +687,13 @@ class SearchEngineUI:
                 print("Please enter a search query.")
             return
 
-        # Get the results for the query
-        results = self.query(query)
 
         # Display results
         with self.results_output:
+            self.results_output.clear_output()
+            print("Thinking...")
+            # Get the results for the query
+            results = self.query(query)
             self.results_output.clear_output()
             if not results:
                 print("No results found for your query.")
@@ -717,6 +721,150 @@ class SearchEngineUI:
                 ) + '</div>'
                 display(HTML(html))
 
+import ipywidgets as widgets
+import pathlib
+import textwrap
+import google.generativeai as genai
+from IPython.display import display
+from IPython.display import Markdown
+from nltk.chat.util import Chat, reflections
+import difflib
+
+class ChatbotService:
+
+  def __init__(self, indexService):
+    genai.configure(api_key='AIzaSyDURb6iohpm_goSIdOB9keMvRXnx88D9p8')
+    self.model = genai.GenerativeModel('gemini-1.5-pro')
+    self.indexService = indexService
+    self.__initBot()
+    self.__buildGUI()
+    pass
+
+  def display(self):
+    display(self.gui)
+
+  def __initBot(self):
+    self.term_summaries = {
+        'SAAS': "Software as a Service (SaaS) is a cloud computing model that delivers software applications over the internet, allowing users to access them without needing to install or maintain hardware or software, as everything is managed by the provider.",
+        'PAAS': "Platform as a Service (PaaS) is a cloud computing offering that provides developers with an environment to build, deploy, and manage applications without worrying about the underlying infrastructure, allowing for faster development.",
+        'IAAS': "Infrastructure as a Service (IaaS) is a cloud computing model that provides virtualized computing resources like servers, storage, and networking on demand, offering flexibility and scalability for businesses.",
+        'FAAS': "Function as a Service (FaaS) is a cloud computing model that enables developers to execute code in response to events without managing servers, offering a scalable and cost-efficient way to build applications.",
+        'Private': "Private cloud refers to cloud computing resources used exclusively by one organization, providing greater control, security, and customization compared to public cloud solutions.",
+        'Public': "Public cloud refers to cloud services offered over the public internet by third-party providers, accessible to anyone and known for scalability, cost efficiency, and ease of use.",
+        'Hybrid': "Hybrid cloud combines private and public cloud infrastructures, allowing data and applications to be shared between them, offering flexibility and optimization of existing infrastructure.",
+        'Service': "In computing, service refers to a functionality or resource provided to users or applications, often delivered via cloud computing or network systems.",
+        'Platform': "A platform is a foundation or environment that enables the development, deployment, and management of applications and services, often abstracting underlying infrastructure.",
+        'Infrastructure': "Infrastructure in computing refers to the hardware, software, networks, and facilities required to support the development, deployment, and operation of applications and IT systems.",
+        'Study': "A study refers to a detailed investigation or analysis of a subject or phenomenon, often conducted to gain deeper insights or inform decisions.",
+        'Case': "A case in this context often refers to a specific instance or example studied to understand a phenomenon, process, or system in detail.",
+        'Chatbot': "A chatbot is a software application designed to simulate human conversation, typically using artificial intelligence and natural language processing.",
+        'Engine': "An engine in computing typically refers to a core component or system that performs essential processing or computational tasks, such as a search engine or rendering engine.",
+        'Cloud': "Cloud computing refers to delivering computing services over the internet, including storage, processing, and software, allowing for scalable and on-demand resources.",
+        'Monitor': "Monitoring in IT refers to the continuous observation and analysis of systems, applications, or networks to ensure performance, reliability, and security.",
+        'Data': "Data refers to information, often in digital form, that can be processed, analyzed, and used to make decisions or derive insights.",
+        'Mainframe': "A mainframe is a powerful, high-performance computer used primarily by large organizations for critical applications, bulk data processing, and enterprise resource planning.",
+        'Performance': "Performance in IT refers to the effectiveness and efficiency of a system, application, or network in executing tasks or meeting user requirements.",
+        'Security': "Security in computing refers to measures and practices designed to protect systems, networks, and data from unauthorized access, attacks, or damage.",
+        'SLA': "A Service Level Agreement (SLA) is a formal contract between a service provider and a customer that defines the level of service expected, including performance metrics and responsibilities.",
+        'KPI': "Key Performance Indicators (KPIs) are measurable values that demonstrate how effectively an individual, team, or organization is achieving specific objectives.",
+        'SOA': "Service-Oriented Architecture (SOA) is a software design approach where services are provided to other components through a communication protocol, enabling flexibility and reusability.",
+        'Information': "Information refers to processed, organized, or structured data that is meaningful and useful for decision-making or understanding.",
+        'Kafka': "Apache Kafka is an open-source distributed event streaming platform used for building real-time data pipelines and streaming applications, known for its high throughput and scalability.",
+        'SQL': "Structured Query Language (SQL) is a programming language used for managing and querying relational databases, enabling efficient data manipulation and retrieval.",
+        'Technology': "Technology refers to the application of scientific knowledge for practical purposes, especially in industry, computing, and innovation.",
+        'Database': "A database is an organized collection of data that can be easily accessed, managed, and updated, typically using database management systems.",
+        'Docker': "Docker is a platform for developing, shipping, and running applications in lightweight containers, ensuring consistency across development and production environments.",
+        'Kubernetes': "Kubernetes is an open-source container orchestration platform that automates the deployment, scaling, and management of containerized applications.",
+        'RabbitMQ': "RabbitMQ is an open-source message broker that facilitates communication between distributed systems by queuing and delivering messages reliably.",
+        'IBM': "IBM (International Business Machines Corporation) is a multinational technology company known for its innovations in computing, cloud solutions, and enterprise IT services.",
+        'Google': "Google is a global technology company specializing in internet-related services and products, including search engines, cloud computing, and AI advancements.",
+        'Amazon': "Amazon is a multinational technology company known for its e-commerce, cloud computing services (AWS), and advancements in artificial intelligence.",
+        'AI': "Artificial Intelligence (AI) is a field of computer science focused on creating systems capable of performing tasks that typically require human intelligence, such as learning, reasoning, and problem-solving.",
+        'Artificial': "Artificial refers to something created or simulated by humans, often to replicate natural phenomena or functionalities, such as artificial intelligence.",
+        'Intelligence': "Intelligence refers to the ability to acquire and apply knowledge and skills, often associated with problem-solving and decision-making capabilities in humans or machines."
+    }
+
+    self.term_summaries = {
+        k.lower(): v for k, v in self.term_summaries.items()
+    }
+
+    # reflections.update(self.term_summaries)
+
+    # for t,val in self.indexService.get_reverse_index().items():
+    #   term_summaries[t] = self.__queryGENAI(f"explain '{val['term']}', tell me in one paragrath")
+    patterns = [
+        (r"^what is (\w+)$", ["%1"]),
+        (r"^explain (\w+)$", ["%1"]),
+        (r"^(\w+)$", ["%1"]),
+        (r".*", ["Sorry, I did not understand that. I only know terms."]),
+    ]
+
+    self.chatbot = Chat(patterns, self.term_summaries)
+
+  # def __queryGENAI(self, query):
+  #   response = self.model.generate_content(query)
+  #   return self.__to_markdown(response.text)
+
+  def __buildGUI(self):
+        self.msg_input = widgets.Text(
+            placeholder="Enter your message here...",
+            description="Message:",
+            layout=widgets.Layout(width='70%')
+        )
+        self.send_button = widgets.Button(
+            description="Send",
+            button_style="primary",
+            tooltip="Click to search",
+            icon="send"
+        )
+        self.results_output = widgets.Output()
+
+        # Attach event handler
+        self.msg_input.on_submit(self.__perform_send)
+        self.send_button.on_click(self.__perform_send)
+
+        # Layout the GUI
+        self.gui = widgets.VBox([
+            widgets.HBox([self.msg_input, self.send_button]),
+            self.results_output
+        ])
+
+  def __perform_send(self, q):
+        msg = self.msg_input.value.strip().lower()
+        if not msg:
+            with self.results_output:
+                self.results_output.clear_output()
+                print("Please enter a message.")
+            return
+
+        # Display results
+        with self.results_output:
+            self.results_output.clear_output()
+            print("Thinking...")
+            # Get the results for the message
+            results = self.chatbot.respond(msg) if self.__termInMessage(msg) else "Unknown term"
+            self.results_output.clear_output()
+            if not results:
+                print("No results found for your term.")
+            else:
+                # Assuming the response is a list of strings
+                if isinstance(results, list):
+                    response_text = "\n".join(results)
+                else:
+                    response_text = str(results)  # Convert to string if not already
+                display(widgets.HTML(f"<b>Response:</b> {response_text}"))
+
+  def  __to_markdown(self, text):
+    text = text.replace('•', ' *')
+    return Markdown(textwrap.indent(text, '> ', predicate=lambda _: True))
+
+  def __termInMessage(self, msg):
+    words = re.findall(r'\b\w+\b', msg)  # Find individual words
+    for word in words:
+        if word.lower() in self.term_summaries:
+            return True
+    return False
+
 #משימה ששלומי נתן לישראל 31.12.24
 #בוצעה
 import pandas as pd
@@ -725,7 +873,7 @@ import seaborn as sns
 import ipywidgets as widgets
 from IPython.display import display
 
-def display_tabs(search_ui, history_service, heatmap_output, bar_chart_output, edit_index_output):
+def display_tabs(search_ui, history_service, heatmap_output, bar_chart_output, edit_index_output, chatbot_ui):
     """
     Creates and displays the tabs containing the search engine, history, and graphs.
     """
@@ -734,19 +882,25 @@ def display_tabs(search_ui, history_service, heatmap_output, bar_chart_output, e
     with query_service_output:
         search_ui.display()
 
+    chatbot_service_output = widgets.Output()
+    with chatbot_service_output:
+        chatbot_ui.display()
+
     # Create the tabs
     tabs = widgets.Tab(children=(
         query_service_output,
         history_service,
         heatmap_output,
         bar_chart_output,
-        edit_index_output
+        edit_index_output,
+        chatbot_service_output,
         ))
     tabs.set_title(0, "Query Service")
     tabs.set_title(1, "History Service")
     tabs.set_title(2, "Heatmap")
     tabs.set_title(3, "Bar Chart")
     tabs.set_title(4, "Edit Index Menu")
+    tabs.set_title(5, "Chatbot")
     display(tabs)
 
 # Assuming GraphService and indexService are already defined
@@ -767,45 +921,10 @@ with edit_index_output:
 
 # Assuming SearchEngineUI and queryService are already defined
 search_ui = SearchEngineUI(queryService)
+chatbot_ui = ChatbotService(indexService)
 
 # Display the tabs with the search engine and other services
-display_tabs(search_ui, history_output, heatmap_output, bar_chart_output, edit_index_output)
-
-#מפה ומטה אסור להריץ ללא אישור של שלומי כי יש פה משהו שמאפס את המסד נתונים
-
-# q = "adsadasdasdas"
-# q_history = historyService.get_history_of(q)
-# if q_history:
-#   pass  # display this as result
-# else:
-#   q_res = queryService.query(q)
-#   historyService.add_to_history(q_res)
-#   pass  # display this as result
-
-# # main.py
-# def main():
-#     # Initialize services
-#     indexService = IndexService(init_index)
-#     crawlerService = CrawlerService(indexService)
-#     # resultService = ResultService(indexService, queryService)
-
-# #if __name__ == "__main__":
-# #  main()
-
-indexService.set_index(firebaseService.get_index_from_DB())
-print("Index from firebase:")
-print(indexService.index_toString())
-
-"""Processing the index and saving it in DB"""
-
-firebaseService.update_index_in_db(indexService.get_reverse_index())
-
-# # To limit the number of pages to crawl
-# MAX_PAGES = 10
-# crawlerService.crawl_website('https://www.ibm.com/us-en', MAX_PAGES)
-# crawlerService.crawl_website('https://www.ibm.com/topics', MAX_PAGES)
-
-# firebaseService.update_index_in_db(indexService.get_reverse_index())
+display_tabs(search_ui, history_output, heatmap_output, bar_chart_output, edit_index_output, chatbot_ui)
 
 """TODO 3 tabs: search results, graph that shows the rank of each page, graph for the website cover of the query keywords
 
