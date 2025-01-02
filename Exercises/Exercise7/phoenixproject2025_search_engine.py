@@ -186,20 +186,22 @@ class IndexService:
 
   def save_in_db(self):
     firebaseService.update_rev_index_in_db(self.rev_index)
-    # call firebaseService.save_rev_index(self.rev_index)
 
   def load_from_db(self):
-    self.set_rev_index(firebaseService.get_rev_index())
-    #pass
+    self.set_rev_index(firebaseService.get_rev_index_from_DB())
 
-  def index_toString(self):
+  def index_toString(self, minView=True):
     str = ''
     for ind,vals in self.rev_index.items():
       str += f"Index '{ind}'\n"
       str += f"\tTerm='{vals['term']}'\n"
       str += "\tDocIDs=\n"
-      for j in range(len(vals['DocIDs'])):
-        str += f"\t\tURL No.{j}: {vals['DocIDs'][j]} - {vals['DocIDs_cntrs'][j]} times\n"
+      if not minView:
+        for j in range(len(vals['DocIDs'])):
+          str += f"\t\tURL No.{j}: {vals['DocIDs'][j]} - {vals['DocIDs_cntrs'][j]} times\n"
+      else:
+        str += f"\t\tTotal Urls: {len(vals['DocIDs'])}\n"
+        str += f"\t\tTotal Occurrences: {sum(vals['DocIDs_cntrs'])}\n"
     return str
 
   def resetService(self):
@@ -214,9 +216,7 @@ class CrawlerService:
 
   def __init__(self, indexService):
     self.indexService = indexService
-    self.crawled_urls = set()
-    self.crawled_count = 0
-    self.robot = None
+    self.resetService()
 
     # Function to crawl a website and fetch n pages
   def crawl_website(self, base_url, max_pages):
@@ -273,6 +273,11 @@ class CrawlerService:
 
   def get_crawled_urls(self):
     return self.crawled_urls
+
+  def resetService(self):
+    self.crawled_urls = set()
+    self.crawled_count = 0
+    self.robot = None
 
   # Function to fetch and parse the robots.txt file to check permissions
   def __check_robot(self, url):
@@ -469,21 +474,24 @@ indexService = IndexService(init_index, firebaseService)
 queryService = QueryService(indexService)
 crawlerService = CrawlerService(indexService)
 
+indexService.set_rev_index(firebaseService.get_rev_index_from_DB())
+print(indexService.index_toString())
+
+firebaseService.update_rev_index_in_db(indexService.get_reverse_index())
+
 # To limit the number of pages to crawl
-MAX_PAGES = 10
+MAX_PAGES = 100
 crawlerService.crawl_website('https://www.ibm.com/us-en', MAX_PAGES)
 crawlerService.crawl_website('https://www.ibm.com/topics', MAX_PAGES)
 
+indexService.load_from_db()
 print(indexService.index_toString())
 
-# indexService.set_rev_index(firebaseService.get_rev_index_from_DB())
-# # print(indexService.index_toString())
-
-# query1 = queryService.query("PAAS")
-# query2 = queryService.query("SAAS OR PAAS")
-# print(query1)
-# print(query2)
-# print(queryService.get_history())
+query1 = queryService.query("PAAS")
+query2 = queryService.query("SAAS OR PAAS")
+print(query1)
+print(query2)
+print(queryService.get_history())
 
 #משימה ששלומי נתן לישראל 31.12.24
 #בוצעה
@@ -730,7 +738,7 @@ from IPython.display import Markdown
 from nltk.chat.util import Chat, reflections
 import difflib
 
-class ChatbotService:
+class ChatbotUI:
 
   def __init__(self, indexService):
     genai.configure(api_key='AIzaSyDURb6iohpm_goSIdOB9keMvRXnx88D9p8')
@@ -921,7 +929,7 @@ with edit_index_output:
 
 # Assuming SearchEngineUI and queryService are already defined
 search_ui = SearchEngineUI(queryService)
-chatbot_ui = ChatbotService(indexService)
+chatbot_ui = ChatbotUI(indexService)
 
 # Display the tabs with the search engine and other services
 display_tabs(search_ui, history_output, heatmap_output, bar_chart_output, edit_index_output, chatbot_ui)
