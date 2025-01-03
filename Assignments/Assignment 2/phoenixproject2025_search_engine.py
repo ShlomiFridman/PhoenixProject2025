@@ -29,7 +29,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import ipywidgets as widgets
-from IPython.display import display, HTML, Markdown
+from IPython.display import display, HTML, Markdown, SVG
 from collections import defaultdict
 import pathlib
 import textwrap
@@ -921,25 +921,28 @@ class EditIndexUI:
       self.msg_input = widgets.Text(
           placeholder="[1-8]",
           description="Choose an option [1-8]: :",
-          layout=widgets.Layout(width='50%')
+          style={'description_width': "auto"},
+          layout=widgets.Layout(width='11%')
       )
       self.send_button = widgets.Button(
           description="Send",
           button_style="primary",
           tooltip="Click to search",
-          layout=widgets.Layout(width='10%'),
+          style={'description_width': "auto"},
           icon="send"
       )
 
       self.data_input = widgets.Text(
-          placeholder="Enter input here",
-          layout=widgets.Layout(width='50%', display='none')
+          placeholder="Enter input",
+          style={'description_width': "auto"},
+          layout=widgets.Layout(width='30%', display='none')
       )
       self.data_button = widgets.Button(
-          description="Send",
+          description="Submit",
           button_style="primary",
           tooltip="Click to search",
-          layout=widgets.Layout(width='10%', display='none'),
+          style={'description_width': "auto"},
+          layout=widgets.Layout(display='none'),
           icon="send"
       )
 
@@ -1014,8 +1017,11 @@ class EditIndexUI:
   def __addURLAction(self):
     u = self.data_input.value.strip()
     with self.results_output:
-      msg = self.crawlerService.crawl_single_url(u)
-      print("Crawling result:", msg)
+      if not u: #Check if empty
+        print("Empty url")
+      else:
+        msg = self.crawlerService.crawl_single_url(u)
+        print("Crawling result:", msg)
 
     self.data_input.layout.display = "none"
     self.data_button.layout.display = "none"
@@ -1101,6 +1107,23 @@ def initGUIProcess(indexService, editIndexUI):
   search_ui = SearchEngineUI(queryService)
   chatbot_ui = ChatbotUI(indexService)
 
+  # SVG URL
+  svg_url = "https://raw.githubusercontent.com/ShlomiFridman/PhoenixProject2025/42847053ee0f661c5f25bc0d06ea7daf740e3cde/Project/phoenix-svgrepo-com.svg"
+
+  # Embed SVG with resizing
+  svg_resized_html = f'''
+  <div style="display: flex; align-items: center;">
+    <div style="width: 100px; height: 100px;">
+        <img src="{svg_url}" style="width: 100%; height: 100%;" />
+    </div>
+    <div style="margin-left: 10px; font-size: 20px; font-weight: bold;">
+        Phoenix Search Engine
+    </div>
+</div>
+'''
+  # Display the SVG
+  display(HTML(svg_resized_html))
+
   # Display the tabs with the search engine and other services
   display_tabs(search_ui, history_output, heatmap_output, bar_chart_output, chatbot_ui, editIndexUI)
 
@@ -1114,9 +1137,11 @@ def mainProcess():
 
 mainProcess()
 
-"""TODO add the group logo from drive
+"""TODO add the group logo from drive"""
 
-TODO enable shering, make the link public
+
+
+"""TODO enable sharing, make the link public
 
 TODO update graphs on editIndex action
 """
