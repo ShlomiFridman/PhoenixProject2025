@@ -36,6 +36,7 @@ import textwrap
 import google.generativeai as genai
 from nltk.chat.util import Chat, reflections
 import difflib
+import numpy as np
 
 """Utils functions"""
 
@@ -418,7 +419,7 @@ class QueryService:
 
   def query(self, query):
     res=self.__query_process(query)
-    self.query_history.insert(0, query)
+    self.query_history.insert(0, {'query': query, 'results': res})
     return res
 
   def get_history(self):
@@ -497,9 +498,6 @@ class QueryService:
     # print(rank)
     return rank
 
-  # def get_history(self):
-  #   return self.query_history
-
 """The index we defined"""
 
 # To limit the number of pages to crawl
@@ -510,11 +508,18 @@ class QueryService:
 # indexService.load_from_db()
 # print(indexService.index_toString())
 
-# query1 = queryService.query("PAAS")
-# query2 = queryService.query("SAAS OR PAAS")
-# print(query1)
-# print(query2)
-# print(queryService.get_history())
+"""
+firebaseService = FirebaseService()
+indexService = IndexService(firebaseService=firebaseService)
+indexService.load_from_db()
+crawlerService = CrawlerService(indexService, maxDepth=10)
+queryService = QueryService(indexService)
+query1 = queryService.query("PAAS")
+query2 = queryService.query("SAAS OR PAAS")
+print(query1)
+print(query2)
+print(queryService.get_history())
+"""
 
 #משימה ששלומי נתן לישראל 31.12.24
 #בוצעה
@@ -569,30 +574,44 @@ class GraphService:
         self.index_df_bar = word_totals
 
     def get_heatmap(self):
-        """
-        Returns the heatmap graph wrapped in a widget output.
-        """
-        heatmap_output = widgets.Output()
-        with heatmap_output:
-            print("Heatmap: Number of Shared URLs Between Indexes")
-            plt.figure(figsize=(20,10))
-            sns.heatmap(
-                self.index_df_coalition_heatmap,
-                annot=True,
-                cmap="YlGnBu",
-                linewidths=0.5,
-                fmt="g",
-                cbar_kws={'label': 'Occurrences'}
-            )
-            plt.title("Heatmap: Shared URLs Between Indexes", fontsize=14)
-            plt.xlabel("Index 1", fontsize=12)
-            plt.ylabel("Index 2", fontsize=12)
-            plt.xticks(rotation=45, ha='right')
-            plt.tight_layout()
-            plt.show()
-        return heatmap_output
+      """
+      Returns the heatmap graph wrapped in a widget output,
+      displaying only the lower triangle (without diagonal or upper triangle),
+      and keeping the original matrix size.
+      """
+      heatmap_output = widgets.Output()
+      with heatmap_output:
+          print("Heatmap: Shared URLs between Indexes")
 
+          # Retrieve the matrix with only the lower triangle
+          df = self.index_df_coalition_heatmap
 
+          plt.figure(figsize=(13, 10))  # Increased size of the figure
+
+          # Display heatmap with lower triangle masked
+          sns.heatmap(
+              df,
+              annot=True,
+              cmap="YlGnBu",
+              linewidths=0.5,
+              fmt="g",
+              cbar_kws={'label': 'Occurrences'},
+              square=True,  # Ensure that it's square
+              annot_kws={'size': 10},  # Adjust annotation text size
+              mask=df.where(np.triu(np.ones(df.shape), k=1).astype(bool)),  # Mask upper triangle
+              cbar=True,  # Show colorbar
+          )
+
+          # Set title and labels for the plot
+          plt.title("Heatmap: Shared URLs between Indexes", fontsize=14)
+          plt.xlabel("Index 1", fontsize=12)
+          plt.ylabel("Index 2", fontsize=12)
+          plt.xticks(rotation=45, ha='right')
+          plt.tight_layout()  # Ensure labels don't overlap
+
+          plt.show()
+
+      return heatmap_output
 
 
     def get_barChart(self):
@@ -607,7 +626,7 @@ class GraphService:
             sorted_df = self.index_df_bar.sort_values(by="occurrences", ascending=False)
 
             plt.figure(figsize=(14, 8))
-            sns.barplot(data=sorted_df, x="word", y="occurrences", palette="viridis")
+            sns.barplot(data=sorted_df, x="word", y="occurrences", hue="word", palette="viridis")
             plt.title("Bar Chart: Word Occurrences Across Webpages (Sorted)", fontsize=16)
             plt.xlabel("Words", fontsize=14)
             plt.ylabel("Occurrences", fontsize=14)
@@ -621,43 +640,51 @@ class GraphService:
 
 
     def __get_shared_docs_dataframe(self):
-        """
-        Creates a dataframe of shared documents between terms.
-        """
-        reverse_index = self.rev_index
+      """
+      Creates a dataframe of shared documents between terms.
+      Only retains the lower triangle of the matrix, and sets the upper triangle (including the diagonal) to 0 or NaN.
+      """
+      reverse_index = self.rev_index
 
-        count_shared_docs = lambda docs1, docs2: len(set(docs1) & set(docs2))
+      # Function to count shared documents between two lists of DocIDs
+      count_shared_docs = lambda docs1, docs2: len(set(docs1) & set(docs2))
 
-        indices = list(reverse_index.keys())
-        data = {}
+      # Getting the list of indices (terms)
+      indices = list(reverse_index.keys())
+      data = {}
 
-        for index1 in indices:
-            data[reverse_index[index1]["term"]] = {}
-            for index2 in indices:
-                shared_docs_count = count_shared_docs(
-                    reverse_index[index1]["DocIDs"], reverse_index[index2]["DocIDs"]
-                )
-                data[reverse_index[index1]["term"]][reverse_index[index2]["term"]] = shared_docs_count
+      # Loop through each pair of indices and compute shared document counts
+      for index1 in indices:
+          data[reverse_index[index1]["term"]] = {}
+          for index2 in indices:
+              shared_docs_count = count_shared_docs(
+                  reverse_index[index1]["DocIDs"], reverse_index[index2]["DocIDs"]
+              )
+              # Store values below the diagonal, set above diagonal and diagonal to 0
+              if indices.index(index1) < indices.index(index2):
+                  data[reverse_index[index1]["term"]][reverse_index[index2]["term"]] = shared_docs_count
+              else:
+                  data[reverse_index[index1]["term"]][reverse_index[index2]["term"]] = 0
 
-        df = pd.DataFrame(data)
+      # Convert the dictionary to DataFrame
+      df = pd.DataFrame(data)
 
-        for i in range(len(df)):
-            df.iloc[i, i] = 0  # Set diagonal to 0
-            for j in range(i + 1, len(df)):
-                df.iloc[i, j] = 0  # Set values above the diagonal to 0
+      # Mask the upper triangle (including diagonal) to be zero
+      mask = np.triu(np.ones_like(df, dtype=bool))  # Creates an upper triangle mask
+      df = df.mask(mask)  # Apply the mask to zero out the upper triangle
 
-        return df
+      return df
 
 #משימה ששלומי נתן לישראל 31.12.24
 #בוצעה
 
 
 class SearchEngineUI:
-    def __init__(self, indexService):
+    def __init__(self, queryService):
         """
         Initializes the SearchEngineUI with the indexService.
         """
-        self.indexService = indexService
+        self.queryService = queryService
         self.query_input = widgets.Text(
             placeholder="Enter your search query here...",
             description="Query:",
@@ -687,18 +714,18 @@ class SearchEngineUI:
         """
         display(self.gui)
 
+
     def query(self, query_str):
-        """
-        Executes a query and returns the results.
-        """
+        """Executes a query and returns the results."""
         try:
-            results = self.indexService.query(query_str)  # Assuming indexService.query() returns a list of JSON results
+            results = self.queryService.query(query_str)  # Assuming queryService.query() returns a list of JSON results
             # Sort results by rank in descending order
             sorted_results = sorted(results, key=lambda x: x['rank'], reverse=True)
             return sorted_results
         except Exception as e:
             print(f"An error occurred during the query: {e}")
             return []
+
 
     def perform_search(self, b):
         """
@@ -710,7 +737,6 @@ class SearchEngineUI:
                 self.results_output.clear_output()
                 print("Please enter a search query.")
             return
-
 
         # Display results
         with self.results_output:
@@ -912,7 +938,7 @@ class EditIndexUI:
           print("\t2. Add a new word to index")
           print("\t3. Remove word from index")
           print("\t4. Add a new url to crawl")
-          print("\t5. Remove an url")
+          print("\t5. Remove a url")
           print("\t6. Save to FireBase")
           print("\t7. Load from FireBase")
           print("\t8. Start crawling")
@@ -1096,8 +1122,10 @@ def initGUIProcess(indexService, editIndexUI):
 
   # Define the history service output
   history_output = widgets.Output()
+  queryService.query("Default Query")
   with history_output:
       print("History Service: Currently empty.")
+      print(queryService.get_history())
 
   # edit_index_output = widgets.Output()
   # with edit_index_output:
@@ -1117,10 +1145,10 @@ def initGUIProcess(indexService, editIndexUI):
         <img src="{svg_url}" style="width: 100%; height: 100%;" />
     </div>
     <div style="margin-left: 10px; font-size: 20px; font-weight: bold;">
-        Phoenix Search Engine
+        Phoenix 2025 Search Engine
     </div>
-</div>
-'''
+  </div>
+  '''
   # Display the SVG
   display(HTML(svg_resized_html))
 
@@ -1137,11 +1165,9 @@ def mainProcess():
 
 mainProcess()
 
-"""TODO add the group logo from drive"""
+"""TODO display history service
 
-
-
-"""TODO enable sharing, make the link public
+TODO enable sharing, make the link public
 
 TODO update graphs on editIndex action
 """
