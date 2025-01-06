@@ -210,7 +210,11 @@ class IndexService:
         if urls[j] not in self.urls_index:
           self.urls_index[urls[j]] = {}
         self.urls_index[urls[j]][ind] = cntrs[j]
-    print("index updated")
+    # print("index updated")
+
+  def get_index_of_word(self, w):
+    stemmed_w = self.stemmer.stem(w)
+    return self.rev_index.get(stemmed_w, None)
 
   def add_new_word(self, word):
     stemmedWord = self.stemmer.stem(word)
@@ -675,16 +679,13 @@ class GraphService:
 
       return df
 
-#משימה ששלומי נתן לישראל 31.12.24
-#בוצעה
-
-
 class SearchEngineUI:
-    def __init__(self, queryService):
+    def __init__(self, indexService, history_service):
         """
-        Initializes the SearchEngineUI with the indexService.
+        Initializes the SearchEngineUI with the indexService and history_service.
         """
-        self.queryService = queryService
+        self.indexService = indexService
+        self.history_service = history_service  # Link to the history service
         self.query_input = widgets.Text(
             placeholder="Enter your search query here...",
             description="Query:",
@@ -697,15 +698,23 @@ class SearchEngineUI:
             icon="search"
         )
         self.results_output = widgets.Output()
+        self.pagination_controls = widgets.HBox([])  # Placeholder for pagination controls
+        self.result_count_label = widgets.Label(value="")  # Label for displaying result count
 
-        # Attach event handler
+        self.current_query = None
+        self.current_results = []
+        self.current_page = 0
+
+        # Attach event handlers
         self.query_input.on_submit(self.perform_search)
         self.search_button.on_click(self.perform_search)
 
         # Layout the GUI
         self.gui = widgets.VBox([
             widgets.HBox([self.query_input, self.search_button]),
-            self.results_output
+            self.result_count_label,  # Add the result count label
+            self.results_output,
+            self.pagination_controls
         ])
 
     def display(self):
@@ -714,11 +723,10 @@ class SearchEngineUI:
         """
         display(self.gui)
 
-
     def query(self, query_str):
         """Executes a query and returns the results."""
         try:
-            results = self.queryService.query(query_str)  # Assuming queryService.query() returns a list of JSON results
+            results = self.indexService.query(query_str)  # Assuming indexService.query() returns a list of JSON results
             # Sort results by rank in descending order
             sorted_results = sorted(results, key=lambda x: x['rank'], reverse=True)
             return sorted_results
@@ -726,10 +734,9 @@ class SearchEngineUI:
             print(f"An error occurred during the query: {e}")
             return []
 
-
     def perform_search(self, b):
         """
-        Executes the search and displays results when the search button is clicked.
+        Executes the search and displays the first page of results.
         """
         query = self.query_input.value.strip()
         if not query:
@@ -738,38 +745,155 @@ class SearchEngineUI:
                 print("Please enter a search query.")
             return
 
-        # Display results
+        startTime = time.time()
+        # Execute the query and save the results
+        self.current_query = query
+        self.current_results = self.query(query)
+        self.current_page = 0
+
+        # Save the query and results in history service
+        # if self.current_results:
+        self.history_service.save_search(query, self.current_results)
+
+        # Update the result count label
+        endTime = time.time()
+        self.update_result_count(len(self.current_results), endTime-startTime)
+
+        # Display the first page of results
+        self.display_page(self.current_page)
+
+    def update_result_count(self, count, time_took):
+        """
+        Updates the label displaying the number of results received.
+        """
+        self.result_count_label.value = f"Number of results: {count} (took {time_took:.3f} sec)"
+
+    def display_page(self, page):
+        """
+        Displays a specific page of results.
+        """
         with self.results_output:
             self.results_output.clear_output()
-            print("Thinking...")
-            # Get the results for the query
-            results = self.query(query)
-            self.results_output.clear_output()
-            if not results:
-                print("No results found for your query.")
-            else:
-                # Convert results to a DataFrame and keep only the 'url' column
-                results_df = pd.DataFrame(results)
-                if 'url' in results_df.columns:
-                    # Add numbering and clickable links
-                    results_df = results_df[['url']]
-                    results_df['url'] = results_df['url'].apply(
-                        lambda x: f'<a href="{x}" target="_blank">{x}</a>'
-                    )
+            start = page * 10
+            end = start + 10
+            chunk = self.current_results[start:end]
 
-                    # Create HTML with alternating white and gray lines
-                    numbered_results = [
-                        f'<div style="background-color: {"#f9f9f9" if i % 2 == 0 else "#eaeaea"}; padding: 8px;">'
-                        f"{i + 1}. {url}"
-                        f"</div>"
-                        for i, url in enumerate(results_df['url'])
-                    ]
+            if not chunk:
+                print("No results to display.")
+                self.update_pagination_controls(page)
+                return
 
-                # Display the results with alternating colors
+            # Convert results to a DataFrame and display clickable links
+            results_df = pd.DataFrame(chunk)
+            if 'url' in results_df.columns:
+                results_df = results_df[['url']]
+                results_df['url'] = results_df['url'].apply(
+                    lambda x: f'<a href="{x}" target="_blank">{x}</a>'
+                )
+                numbered_results = [
+                    f'<div style="background-color: {"#f9f9f9" if i % 2 == 0 else "#eaeaea"}; padding: 8px;">'
+                    f"{i + 1 + start}. {url}"
+                    f"</div>"
+                    for i, url in enumerate(results_df['url'])
+                ]
+
                 html = '<div style="text-align: left; font-family: Arial; font-size: 14px;">' + ''.join(
                     numbered_results
                 ) + '</div>'
                 display(HTML(html))
+
+        # Update pagination controls
+        self.update_pagination_controls(page)
+
+    def update_pagination_controls(self, page):
+        """
+        Updates the pagination controls based on the current page.
+        """
+        total_pages = (len(self.current_results)) // 10 + (len(self.current_results) % 10 !=0)  # Calculate total pages
+
+        # Create Previous and Next buttons
+        prev_button = widgets.Button(
+            description="Previous",
+            icon="arrow-left",
+            button_style="info",
+            disabled=(page == 0)  # Disable if on the first page
+        )
+        next_button = widgets.Button(
+            description="Next",
+            icon="arrow-right",
+            button_style="info",
+            disabled=(page == total_pages - 1)  # Disable if on the last page
+        )
+
+        # Attach event handlers
+        prev_button.on_click(lambda b: self.display_page(page - 1))
+        next_button.on_click(lambda b: self.display_page(page + 1))
+        prev_button.layout.display = ("flex" if page != 0 else "none")
+        next_button.layout.display = ("flex" if page != total_pages - 1 else "none")
+
+        label=widgets.Label(f"Page {page + 1} of {total_pages}")
+
+        # Update the pagination controls layout
+        self.pagination_controls.children = [prev_button, label, next_button] if total_pages else []
+
+#משימה ששלומי נתן לישראל 31.12.24
+#בוצעה
+
+class SearchHistoryService:
+    def __init__(self):
+        """
+        Initializes the SearchHistoryService.
+        """
+        self.history = []  # List to store search history
+        self.history_output = widgets.Output()  # Output widget for displaying history
+        with self.history_output:
+          print("You have no history.")
+
+    def save_search(self, query, results):
+        """
+        Saves the search query and its results to the history.
+        """
+        self.history.append({"query": query, "results": results})
+        self.history = self.history[-5:]  # Keep only the last 5 searches
+        self.display_history()  # Update the history display
+
+    def display_history(self):
+        """
+        Displays the 5 most recent search results in the History Service tab with numbering and result counts.
+        """
+        with self.history_output:
+            self.history_output.clear_output()
+
+            if not self.history:
+                print("No recent searches available.")
+            else:
+                accordion = widgets.Accordion()  # Create an accordion for collapsible lists
+                for i, entry in enumerate(reversed(self.history), start=1):  # Most recent first
+                    # Create HTML for the list of URLs
+                    results_html = "<ul>"
+                    for site_index, result in enumerate(entry["results"][:10], start=1):
+                        results_html += f'<li>{site_index}. <a href="{result["url"]}" target="_blank">{result["url"]}</a></li>'
+                    results_html += "</ul>"
+
+                    # Create an output widget to hold the list of URLs
+                    result_output = widgets.Output()
+                    with result_output:
+                        display(HTML(results_html))
+
+                    # Add the query with result count as a button with collapsible functionality
+                    result_count = len(entry["results"])
+                    accordion.children += (result_output,)
+                    # accordion.set_title(i - 1, f"{i}. Query: {entry['query']} (Results: {result_count})")
+                    accordion.set_title(i - 1, f"Query No.{i}: {entry['query']} {'(no results)' if not len(entry['results']) else ''}")
+
+                # Display the accordion
+                display(accordion)
+
+    def get_output_widget(self):
+        """
+        Returns the output widget for the History Service tab.
+        """
+        return self.history_output
 
 class ChatbotUI:
 
@@ -848,7 +972,7 @@ class ChatbotUI:
 
   def __buildGUI(self):
         self.msg_input = widgets.Text(
-            placeholder="Enter your message here...",
+            placeholder="Enter your message here (I only know terms)",
             description="Message:",
             layout=widgets.Layout(width='70%')
         )
@@ -948,7 +1072,7 @@ class EditIndexUI:
           placeholder="[1-8]",
           description="Choose an option [1-8]: :",
           style={'description_width': "auto"},
-          layout=widgets.Layout(width='11%')
+          layout=widgets.Layout(width='20%')
       )
       self.send_button = widgets.Button(
           description="Send",
@@ -1001,19 +1125,34 @@ class EditIndexUI:
           self.data_input.value=""
           if (2<= int(self.op) <= 5):
             self.data_input.description = self.opInputPrompt.get(self.op, "ERROR")
+            self.data_input.value=""
             self.data_input.layout.display = "flex"
             self.data_button.layout.display = "flex"
           else:
             self.data_input.layout.display = "none"
             self.data_button.layout.display = "none"
+            self.__toggleDisabled()
             self.selectFunc()
+            self.__toggleDisabled()
+
+  def __toggleDisabled(self):
+    flag = not self.msg_input.disabled
+    self.msg_input.disabled = flag
+    self.send_button.disabled = flag
+    self.data_input.disabled = flag
+    self.data_button.disabled = flag
+
 
   def __doActionOnClick(self, q):
     with self.results_output:
       if self.selectFunc:
+        self.__toggleDisabled()
         self.selectFunc()
+        self.__toggleDisabled()
       else:
         print("Invalid action")
+    self.data_input.layout.display = "none"
+    self.data_button.layout.display = "none"
 
   def __printAction(self):
     print(self.indexService.index_toString())
@@ -1022,23 +1161,18 @@ class EditIndexUI:
     w = self.data_input.value.strip()
 
     if self.indexService.add_new_word(w):
-      print("New word added")
+      print(f"New word added '{w}': {self.indexService.get_index_of_word(w)}")
+      print("A crawl is needed to build it's index")
     else:
       print("The word was already in index")
-
-    self.data_input.layout.display = "none"
-    self.data_button.layout.display = "none"
 
   def __removeWordAction(self):
     w = self.data_input.value.strip()
 
     if self.indexService.remove_word(w):
-      print("The word was removed from index")
+      print(f"The word '{w}' was removed from index")
     else:
-      print("The word wasn't in the index")
-
-    self.data_input.layout.display = "none"
-    self.data_button.layout.display = "none"
+      print(f"The word '{w}' wasn't in the index")
 
   def __addURLAction(self):
     u = self.data_input.value.strip()
@@ -1049,9 +1183,6 @@ class EditIndexUI:
         msg = self.crawlerService.crawl_single_url(u)
         print("Crawling result:", msg)
 
-    self.data_input.layout.display = "none"
-    self.data_button.layout.display = "none"
-
   def __removeURLAction(self):
     u = self.data_input.value.strip()
 
@@ -1061,15 +1192,13 @@ class EditIndexUI:
       else:
         print("Url was not in index")
 
-    self.data_input.layout.display = "none"
-    self.data_button.layout.display = "none"
-
 
   def __saveAction(self):
     self.indexService.save_in_db()
 
   def __loadAction(self):
     self.indexService.load_from_db()
+    print("index loaded from db")
 
   def __crawlAction(self):
     self.crawlerService.initCrawlingProcess()
@@ -1079,17 +1208,22 @@ class EditIndexUI:
 
 def display_tabs(search_ui, history_service, heatmap_output, bar_chart_output, chatbot_ui, editIndexUI):
     """
-    Creates and displays the tabs containing the search engine, history, and graphs.
+    Creates and displays the tabs containing the search engine, history, and other features.
     """
     # Create a container for the search engine UI in the first tab
     query_service_output = widgets.Output()
     with query_service_output:
         search_ui.display()
 
+    # Get the output widget for the history service
+    history_service_output = history_service.get_output_widget()
+
+    # Create a container for the Chatbot UI
     chatbot_service_output = widgets.Output()
     with chatbot_service_output:
         chatbot_ui.display()
 
+    # Create a container for the Edit Index Menu
     index_menu_output = widgets.Output()
     with index_menu_output:
         editIndexUI.display()
@@ -1097,12 +1231,12 @@ def display_tabs(search_ui, history_service, heatmap_output, bar_chart_output, c
     # Create the tabs
     tabs = widgets.Tab(children=(
         query_service_output,
-        history_service,
+        history_service_output,  # Use the output widget from the history service
         heatmap_output,
         bar_chart_output,
         index_menu_output,
         chatbot_service_output,
-        ))
+    ))
     tabs.set_title(0, "Query Service")
     tabs.set_title(1, "History Service")
     tabs.set_title(2, "Heatmap")
@@ -1121,18 +1255,19 @@ def initGUIProcess(indexService, editIndexUI):
   bar_chart_output = graphService.get_barChart()
 
   # Define the history service output
-  history_output = widgets.Output()
-  queryService.query("Default Query")
-  with history_output:
-      print("History Service: Currently empty.")
-      print(queryService.get_history())
+  history_output = SearchHistoryService()
+  #history_output = widgets.Output()
+  #queryService.query("Default Query")
+  #with history_output:
+   #   print("History Service: Currently empty.")
+    #  print(queryService.get_history())
 
   # edit_index_output = widgets.Output()
   # with edit_index_output:
   #     print("Edit Index Menu: Currently empty.")
 
   # Assuming SearchEngineUI and queryService are already defined
-  search_ui = SearchEngineUI(queryService)
+  search_ui = SearchEngineUI(queryService,history_output)
   chatbot_ui = ChatbotUI(indexService)
 
   # SVG URL
