@@ -1271,13 +1271,18 @@ def initGUIProcess(indexService, editIndexUI):
   chatbot_ui = ChatbotUI(indexService)
 
   # SVG URL
-  svg_url = "https://raw.githubusercontent.com/ShlomiFridman/PhoenixProject2025/42847053ee0f661c5f25bc0d06ea7daf740e3cde/Project/phoenix-svgrepo-com.svg"
+  phoenix_svg_url = "https://raw.githubusercontent.com/ShlomiFridman/PhoenixProject2025/42847053ee0f661c5f25bc0d06ea7daf740e3cde/Project/phoenix-svgrepo-com.svg"
+  ibm_svg_url = "https://raw.githubusercontent.com/ShlomiFridman/PhoenixProject2025/e11c8ccf8c7ffe08da02f4df74393f6472f5bf51/Project/IBM_logo.svg"
 
   # Embed SVG with resizing
   svg_resized_html = f'''
   <div style="display: flex; align-items: center;">
     <div style="width: 100px; height: 100px;">
-        <img src="{svg_url}" style="width: 100%; height: 100%;" />
+        <img src="{ibm_svg_url}" style="width: 100%; height: 100%;" />
+    </div>
+    &emsp;
+    <div style="width: 100px; height: 100px;">
+        <img src="{phoenix_svg_url}" style="width: 100%; height: 100%;" />
     </div>
     <div style="margin-left: 10px; font-size: 20px; font-weight: bold;">
         Phoenix 2025 Search Engine
