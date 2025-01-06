@@ -24,7 +24,19 @@ from urllib.robotparser import RobotFileParser
 from nltk.stem import PorterStemmer
 import re
 from firebase import firebase
-import spacy
+# import spacy
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import ipywidgets as widgets
+from IPython.display import display, HTML, Markdown, SVG
+from collections import defaultdict
+import pathlib
+import textwrap
+import google.generativeai as genai
+from nltk.chat.util import Chat, reflections
+import difflib
+import numpy as np
 
 """Utils functions"""
 
@@ -91,6 +103,8 @@ class FirebaseService:
     return self.FBconn.get('/Index/', None)
 
   def update_rev_index_in_db(self, index_p):
+    self.FBconn.delete("/Index/", None)
+    print("Cleared database before save")
     for k,v in index_p.items():
       self.FBconn.put("/Index/", k, v)
       print(f"update made for index={k} ({v['term']})")
@@ -109,8 +123,47 @@ class FirebaseService:
 
 class IndexService:
 
-  def __init__(self, index, firebaseService):
-    self.init_index_vals = index
+  def __init__(self, index = None, firebaseService = None):
+    self.default_index_words = [
+        'SAAS',
+        'PAAS',
+        'IAAS',
+        'FAAS',
+        'Private',
+        'Public',
+        'Hybrid',
+        'Service',
+        'Platform',
+        'Infrastructure',
+        'Study',
+        'Case',
+        'Chatbot',
+        'Engine',
+        'Cloud',
+        'Monitor',
+        'Data',
+        'Mainframe',
+        'Performance',
+        'Security',
+        'SLA',
+        'KPI',
+        'SOA',
+        'Information',
+        'Kafka',
+        'SQL',
+        'Technology',
+        'Database',
+        'Docker',
+        'Kubernetes',
+        'RabbitMQ',
+        'IBM',
+        'Google',
+        'Amazon',
+        'AI',
+        'Artificial',
+        'Intelligence',
+    ]
+    self.init_index_vals = index if index else self.default_index_words
     self.stemmer = PorterStemmer()
     self.firebaseService = firebaseService
     self.resetService()
@@ -157,7 +210,11 @@ class IndexService:
         if urls[j] not in self.urls_index:
           self.urls_index[urls[j]] = {}
         self.urls_index[urls[j]][ind] = cntrs[j]
-    print("index updated")
+    # print("index updated")
+
+  def get_index_of_word(self, w):
+    stemmed_w = self.stemmer.stem(w)
+    return self.rev_index.get(stemmed_w, None)
 
   def add_new_word(self, word):
     stemmedWord = self.stemmer.stem(word)
@@ -178,17 +235,25 @@ class IndexService:
   def remove_url(self, url):
     if url not in self.urls_index:
       return False
-    for word,cntr in self.urls_index.items():
-      ind = self.rev_index["DocIDs"].index(url)
-      del self.rev_index["DocIDs"][ind]
-      del self.rev_index["DocIDs_cntrs"][ind]
+    for word,cntr in self.urls_index[url].items():
+      if word not in self.rev_index:
+        continue
+      ind = self.rev_index[word]["DocIDs"].index(url)
+      del self.rev_index[word]["DocIDs"][ind]
+      del self.rev_index[word]["DocIDs_cntrs"][ind]
+    del self.urls_index[url]
     return True
 
   def save_in_db(self):
-    firebaseService.update_rev_index_in_db(self.rev_index)
-
+    if self.firebaseService:
+      self.firebaseService.update_rev_index_in_db(self.rev_index)
+    else:
+      print("IndexService does not have FirebaseService")
   def load_from_db(self):
-    self.set_rev_index(firebaseService.get_rev_index_from_DB())
+    if self.firebaseService:
+      self.set_rev_index(self.firebaseService.get_rev_index_from_DB())
+    else:
+      print("IndexService does not have FirebaseService")
 
   def index_toString(self, minView=True):
     str = ''
@@ -214,12 +279,19 @@ class IndexService:
 
 class CrawlerService:
 
-  def __init__(self, indexService):
+  def __init__(self, indexService, baseURLs=set(['https://www.ibm.com/us-en', 'https://www.ibm.com/topics']) ,maxDepth=100):
     self.indexService = indexService
+    self.maxDepth = maxDepth
     self.resetService()
+    self.baseURLs = baseURLs
+
+  def initCrawlingProcess(self):
+    self.resetService()
+    for url in self.baseURLs:
+      self.crawl_website(url, self.maxDepth)
 
     # Function to crawl a website and fetch n pages
-  def crawl_website(self, base_url, max_pages):
+  def crawl_website(self, base_url, max_pages=100):
       rp = self.__check_robot(base_url)  # Check the robots.txt file
       urls_to_crawl = [base_url]  # Initialize the queue with the base URL
       current_crawled_urls = set()
@@ -257,6 +329,9 @@ class CrawlerService:
       return current_crawled_urls
 
   def crawl_single_url(self, url):
+      if url in self.crawled_urls:
+        return "Url was already crawled"
+      self.baseURLs.add(url)
       rp = self.__check_robot(url)  # Check the robots.txt file
       print(f"Crawling {self.crawled_count+1}: {url}")
       page_content = self.__fetch_page_crawler(url, rp)
@@ -268,6 +343,9 @@ class CrawlerService:
         soup = BeautifulSoup(page_content, 'html.parser')
         self.indexService.process_soup(url, soup)
         time.sleep(2)  # Sleep for 2 seconds between requests (politeness)
+        return "Url was crawled successfully"
+      else:
+        return "Cannot crawl given url"
 
 
 
@@ -345,7 +423,7 @@ class QueryService:
 
   def query(self, query):
     res=self.__query_process(query)
-    self.query_history.insert(0, query)
+    self.query_history.insert(0, {'query': query, 'results': res})
     return res
 
   def get_history(self):
@@ -424,84 +502,28 @@ class QueryService:
     # print(rank)
     return rank
 
-  # def get_history(self):
-  #   return self.query_history
-
 """The index we defined"""
 
-init_index = [
-    'SAAS',
-    'PAAS',
-    'IAAS',
-    'FAAS',
-    'Private',
-    'Public',
-    'Hybrid',
-    'Service',
-    'Platform',
-    'Infrastructure',
-    'Study',
-    'Case',
-    'Chatbot',
-    'Engine',
-    'Cloud',
-    'Monitor',
-    'Data',
-    'Mainframe',
-    'Performance',
-    'Security',
-    'SLA',
-    'KPI',
-    'SOA',
-    'Information',
-    'Kafka',
-    'SQL',
-    'Technology',
-    'Database',
-    'Docker',
-    'Kubernetes',
-    'RabbitMQ',
-    'IBM',
-    'Google',
-    'Amazon',
-    'AI',
-    'Artificial',
-    'Intelligence',
-]
-
-firebaseService = FirebaseService()
-indexService = IndexService(init_index, firebaseService)
-queryService = QueryService(indexService)
-crawlerService = CrawlerService(indexService)
-
-indexService.set_rev_index(firebaseService.get_rev_index_from_DB())
-print(indexService.index_toString())
-
-firebaseService.update_rev_index_in_db(indexService.get_reverse_index())
-
 # To limit the number of pages to crawl
-MAX_PAGES = 100
-crawlerService.crawl_website('https://www.ibm.com/us-en', MAX_PAGES)
-crawlerService.crawl_website('https://www.ibm.com/topics', MAX_PAGES)
+# MAX_PAGES = 10
+# crawlerService.crawl_website('https://www.ibm.com/us-en', MAX_PAGES)
+# crawlerService.crawl_website('https://www.ibm.com/topics', MAX_PAGES)
 
+# indexService.load_from_db()
+# print(indexService.index_toString())
+
+"""
+firebaseService = FirebaseService()
+indexService = IndexService(firebaseService=firebaseService)
 indexService.load_from_db()
-print(indexService.index_toString())
-
+crawlerService = CrawlerService(indexService, maxDepth=10)
+queryService = QueryService(indexService)
 query1 = queryService.query("PAAS")
 query2 = queryService.query("SAAS OR PAAS")
 print(query1)
 print(query2)
 print(queryService.get_history())
-
-#משימה ששלומי נתן לישראל 31.12.24
-#בוצעה
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import ipywidgets as widgets
-from IPython.display import display
-from collections import defaultdict
-
+"""
 
 class GraphService:
     def __init__(self, rev_index):
@@ -551,30 +573,44 @@ class GraphService:
         self.index_df_bar = word_totals
 
     def get_heatmap(self):
-        """
-        Returns the heatmap graph wrapped in a widget output.
-        """
-        heatmap_output = widgets.Output()
-        with heatmap_output:
-            print("Heatmap: Number of Shared URLs Between Indexes")
-            plt.figure(figsize=(20,10))
-            sns.heatmap(
-                self.index_df_coalition_heatmap,
-                annot=True,
-                cmap="YlGnBu",
-                linewidths=0.5,
-                fmt="g",
-                cbar_kws={'label': 'Occurrences'}
-            )
-            plt.title("Heatmap: Shared URLs Between Indexes", fontsize=14)
-            plt.xlabel("Index 1", fontsize=12)
-            plt.ylabel("Index 2", fontsize=12)
-            plt.xticks(rotation=45, ha='right')
-            plt.tight_layout()
-            plt.show()
-        return heatmap_output
+      """
+      Returns the heatmap graph wrapped in a widget output,
+      displaying only the lower triangle (without diagonal or upper triangle),
+      and keeping the original matrix size.
+      """
+      heatmap_output = widgets.Output()
+      with heatmap_output:
+          print("Heatmap: Shared URLs between Indexes")
 
+          # Retrieve the matrix with only the lower triangle
+          df = self.index_df_coalition_heatmap
 
+          plt.figure(figsize=(13, 10))  # Increased size of the figure
+
+          # Display heatmap with lower triangle masked
+          sns.heatmap(
+              df,
+              annot=True,
+              cmap="YlGnBu",
+              linewidths=0.5,
+              fmt="g",
+              cbar_kws={'label': 'Occurrences'},
+              square=True,  # Ensure that it's square
+              annot_kws={'size': 10},  # Adjust annotation text size
+              mask=df.where(np.triu(np.ones(df.shape), k=1).astype(bool)),  # Mask upper triangle
+              cbar=True,  # Show colorbar
+          )
+
+          # Set title and labels for the plot
+          plt.title("Heatmap: Shared URLs between Indexes", fontsize=14)
+          plt.xlabel("Index 1", fontsize=12)
+          plt.ylabel("Index 2", fontsize=12)
+          plt.xticks(rotation=45, ha='right')
+          plt.tight_layout()  # Ensure labels don't overlap
+
+          plt.show()
+
+      return heatmap_output
 
 
     def get_barChart(self):
@@ -589,7 +625,7 @@ class GraphService:
             sorted_df = self.index_df_bar.sort_values(by="occurrences", ascending=False)
 
             plt.figure(figsize=(14, 8))
-            sns.barplot(data=sorted_df, x="word", y="occurrences", palette="viridis")
+            sns.barplot(data=sorted_df, x="word", y="occurrences", hue="word", palette="viridis")
             plt.title("Bar Chart: Word Occurrences Across Webpages (Sorted)", fontsize=16)
             plt.xlabel("Words", fontsize=14)
             plt.ylabel("Occurrences", fontsize=14)
@@ -603,45 +639,48 @@ class GraphService:
 
 
     def __get_shared_docs_dataframe(self):
-        """
-        Creates a dataframe of shared documents between terms.
-        """
-        reverse_index = self.rev_index
+      """
+      Creates a dataframe of shared documents between terms.
+      Only retains the lower triangle of the matrix, and sets the upper triangle (including the diagonal) to 0 or NaN.
+      """
+      reverse_index = self.rev_index
 
-        count_shared_docs = lambda docs1, docs2: len(set(docs1) & set(docs2))
+      # Function to count shared documents between two lists of DocIDs
+      count_shared_docs = lambda docs1, docs2: len(set(docs1) & set(docs2))
 
-        indices = list(reverse_index.keys())
-        data = {}
+      # Getting the list of indices (terms)
+      indices = list(reverse_index.keys())
+      data = {}
 
-        for index1 in indices:
-            data[reverse_index[index1]["term"]] = {}
-            for index2 in indices:
-                shared_docs_count = count_shared_docs(
-                    reverse_index[index1]["DocIDs"], reverse_index[index2]["DocIDs"]
-                )
-                data[reverse_index[index1]["term"]][reverse_index[index2]["term"]] = shared_docs_count
+      # Loop through each pair of indices and compute shared document counts
+      for index1 in indices:
+          data[reverse_index[index1]["term"]] = {}
+          for index2 in indices:
+              shared_docs_count = count_shared_docs(
+                  reverse_index[index1]["DocIDs"], reverse_index[index2]["DocIDs"]
+              )
+              # Store values below the diagonal, set above diagonal and diagonal to 0
+              if indices.index(index1) < indices.index(index2):
+                  data[reverse_index[index1]["term"]][reverse_index[index2]["term"]] = shared_docs_count
+              else:
+                  data[reverse_index[index1]["term"]][reverse_index[index2]["term"]] = 0
 
-        df = pd.DataFrame(data)
+      # Convert the dictionary to DataFrame
+      df = pd.DataFrame(data)
 
-        for i in range(len(df)):
-            df.iloc[i, i] = 0  # Set diagonal to 0
-            for j in range(i + 1, len(df)):
-                df.iloc[i, j] = 0  # Set values above the diagonal to 0
+      # Mask the upper triangle (including diagonal) to be zero
+      mask = np.triu(np.ones_like(df, dtype=bool))  # Creates an upper triangle mask
+      df = df.mask(mask)  # Apply the mask to zero out the upper triangle
 
-        return df
-
-#משימה ששלומי נתן לישראל 31.12.24
-#בוצעה
-import ipywidgets as widgets
-from IPython.display import display, HTML
-import pandas as pd
+      return df
 
 class SearchEngineUI:
-    def __init__(self, indexService):
+    def __init__(self, indexService, history_service):
         """
-        Initializes the SearchEngineUI with the indexService.
+        Initializes the SearchEngineUI with the indexService and history_service.
         """
         self.indexService = indexService
+        self.history_service = history_service  # Link to the history service
         self.query_input = widgets.Text(
             placeholder="Enter your search query here...",
             description="Query:",
@@ -654,15 +693,23 @@ class SearchEngineUI:
             icon="search"
         )
         self.results_output = widgets.Output()
+        self.pagination_controls = widgets.HBox([])  # Placeholder for pagination controls
+        self.result_count_label = widgets.Label(value="")  # Label for displaying result count
 
-        # Attach event handler
+        self.current_query = None
+        self.current_results = []
+        self.current_page = 0
+
+        # Attach event handlers
         self.query_input.on_submit(self.perform_search)
         self.search_button.on_click(self.perform_search)
 
         # Layout the GUI
         self.gui = widgets.VBox([
             widgets.HBox([self.query_input, self.search_button]),
-            self.results_output
+            self.result_count_label,  # Add the result count label
+            self.results_output,
+            self.pagination_controls
         ])
 
     def display(self):
@@ -672,9 +719,7 @@ class SearchEngineUI:
         display(self.gui)
 
     def query(self, query_str):
-        """
-        Executes a query and returns the results.
-        """
+        """Executes a query and returns the results."""
         try:
             results = self.indexService.query(query_str)  # Assuming indexService.query() returns a list of JSON results
             # Sort results by rank in descending order
@@ -686,7 +731,7 @@ class SearchEngineUI:
 
     def perform_search(self, b):
         """
-        Executes the search and displays results when the search button is clicked.
+        Executes the search and displays the first page of results.
         """
         query = self.query_input.value.strip()
         if not query:
@@ -695,48 +740,155 @@ class SearchEngineUI:
                 print("Please enter a search query.")
             return
 
+        startTime = time.time()
+        # Execute the query and save the results
+        self.current_query = query
+        self.current_results = self.query(query)
+        self.current_page = 0
 
-        # Display results
+        # Save the query and results in history service
+        # if self.current_results:
+        self.history_service.save_search(query, self.current_results)
+
+        # Update the result count label
+        endTime = time.time()
+        self.update_result_count(len(self.current_results), endTime-startTime)
+
+        # Display the first page of results
+        self.display_page(self.current_page)
+
+    def update_result_count(self, count, time_took):
+        """
+        Updates the label displaying the number of results received.
+        """
+        self.result_count_label.value = f"Number of results: {count} (took {time_took:.3f} sec)"
+
+    def display_page(self, page):
+        """
+        Displays a specific page of results.
+        """
         with self.results_output:
             self.results_output.clear_output()
-            print("Thinking...")
-            # Get the results for the query
-            results = self.query(query)
-            self.results_output.clear_output()
-            if not results:
-                print("No results found for your query.")
-            else:
-                # Convert results to a DataFrame and keep only the 'url' column
-                results_df = pd.DataFrame(results)
-                if 'url' in results_df.columns:
-                    # Add numbering and clickable links
-                    results_df = results_df[['url']]
-                    results_df['url'] = results_df['url'].apply(
-                        lambda x: f'<a href="{x}" target="_blank">{x}</a>'
-                    )
+            start = page * 10
+            end = start + 10
+            chunk = self.current_results[start:end]
 
-                    # Create HTML with alternating white and gray lines
-                    numbered_results = [
-                        f'<div style="background-color: {"#f9f9f9" if i % 2 == 0 else "#eaeaea"}; padding: 8px;">'
-                        f"{i + 1}. {url}"
-                        f"</div>"
-                        for i, url in enumerate(results_df['url'])
-                    ]
+            if not chunk:
+                print("No results to display.")
+                self.update_pagination_controls(page)
+                return
 
-                # Display the results with alternating colors
+            # Convert results to a DataFrame and display clickable links
+            results_df = pd.DataFrame(chunk)
+            if 'url' in results_df.columns:
+                results_df = results_df[['url']]
+                results_df['url'] = results_df['url'].apply(
+                    lambda x: f'<a href="{x}" target="_blank">{x}</a>'
+                )
+                numbered_results = [
+                    f'<div style="background-color: {"#f9f9f9" if i % 2 == 0 else "#eaeaea"}; padding: 8px;">'
+                    f"{i + 1 + start}. {url}"
+                    f"</div>"
+                    for i, url in enumerate(results_df['url'])
+                ]
+
                 html = '<div style="text-align: left; font-family: Arial; font-size: 14px;">' + ''.join(
                     numbered_results
                 ) + '</div>'
                 display(HTML(html))
 
-import ipywidgets as widgets
-import pathlib
-import textwrap
-import google.generativeai as genai
-from IPython.display import display
-from IPython.display import Markdown
-from nltk.chat.util import Chat, reflections
-import difflib
+        # Update pagination controls
+        self.update_pagination_controls(page)
+
+    def update_pagination_controls(self, page):
+        """
+        Updates the pagination controls based on the current page.
+        """
+        total_pages = (len(self.current_results)) // 10 + (len(self.current_results) % 10 !=0)  # Calculate total pages
+
+        # Create Previous and Next buttons
+        prev_button = widgets.Button(
+            description="Previous",
+            icon="arrow-left",
+            button_style="info",
+            disabled=(page == 0)  # Disable if on the first page
+        )
+        next_button = widgets.Button(
+            description="Next",
+            icon="arrow-right",
+            button_style="info",
+            disabled=(page == total_pages - 1)  # Disable if on the last page
+        )
+
+        # Attach event handlers
+        prev_button.on_click(lambda b: self.display_page(page - 1))
+        next_button.on_click(lambda b: self.display_page(page + 1))
+        prev_button.layout.display = ("flex" if page != 0 else "none")
+        next_button.layout.display = ("flex" if page != total_pages - 1 else "none")
+
+        label=widgets.Label(f"Page {page + 1} of {total_pages}")
+
+        # Update the pagination controls layout
+        self.pagination_controls.children = [prev_button, label, next_button] if total_pages else []
+
+#משימה ששלומי נתן לישראל 31.12.24
+#בוצעה
+
+class SearchHistoryUI:
+    def __init__(self):
+        """
+        Initializes the SearchHistoryUI.
+        """
+        self.history = []  # List to store search history
+        self.history_output = widgets.Output()  # Output widget for displaying history
+        with self.history_output:
+          print("You have no history.")
+
+    def save_search(self, query, results):
+        """
+        Saves the search query and its results to the history.
+        """
+        self.history.append({"query": query, "results": results})
+        self.history = self.history[-5:]  # Keep only the last 5 searches
+        self.display_history()  # Update the history display
+
+    def display_history(self):
+        """
+        Displays the 5 most recent search results in the History Service tab with numbering and result counts.
+        """
+        with self.history_output:
+            self.history_output.clear_output()
+
+            if not self.history:
+                print("No recent searches available.")
+            else:
+                accordion = widgets.Accordion()  # Create an accordion for collapsible lists
+                for i, entry in enumerate(reversed(self.history), start=1):  # Most recent first
+                    # Create HTML for the list of URLs
+                    results_html = "<ul>"
+                    for site_index, result in enumerate(entry["results"][:10], start=1):
+                        results_html += f'<li>{site_index}. <a href="{result["url"]}" target="_blank">{result["url"]}</a></li>'
+                    results_html += "</ul>"
+
+                    # Create an output widget to hold the list of URLs
+                    result_output = widgets.Output()
+                    with result_output:
+                        display(HTML(results_html))
+
+                    # Add the query with result count as a button with collapsible functionality
+                    result_count = len(entry["results"])
+                    accordion.children += (result_output,)
+                    # accordion.set_title(i - 1, f"{i}. Query: {entry['query']} (Results: {result_count})")
+                    accordion.set_title(i - 1, f"Query No.{i}: {entry['query']} {'(no results)' if not len(entry['results']) else ''}")
+
+                # Display the accordion
+                display(accordion)
+
+    def get_output_widget(self):
+        """
+        Returns the output widget for the History Service tab.
+        """
+        return self.history_output
 
 class ChatbotUI:
 
@@ -815,7 +967,7 @@ class ChatbotUI:
 
   def __buildGUI(self):
         self.msg_input = widgets.Text(
-            placeholder="Enter your message here...",
+            placeholder="Enter your message here (I only know terms)",
             description="Message:",
             layout=widgets.Layout(width='70%')
         )
@@ -873,36 +1025,213 @@ class ChatbotUI:
             return True
     return False
 
+class EditIndexUI:
+
+  def __init__(self, indexService, crawlerService):
+    self.indexService = indexService
+    self.crawlerService = crawlerService
+    self.opFunc = {
+        "1": self.__printAction,
+        "2": self.__addWordAction,
+        "3": self.__removeWordAction,
+        "4": self.__addURLAction,
+        "5": self.__removeURLAction,
+        "6": self.__saveAction,
+        "7": self.__loadAction,
+        "8": self.__crawlAction,
+        # "9": self.__exitAction,
+    }
+    self.opInputPrompt = {
+        "2": "Please enter the word to be added: ",
+        "3": "Please enter a word to be removed: ",
+        "4": "Please enter a url to be added: ",
+        "5": "Please enter a url to be removed: ",
+    }
+    self.selectFunc = None
+
+  def display(self):
+      self.menu_output = widgets.Output()
+      with self.menu_output:
+          print("\nMenu:")
+          print("\t1. Print index")
+          print("\t2. Add a new word to index")
+          print("\t3. Remove word from index")
+          print("\t4. Add a new url to crawl")
+          print("\t5. Remove a url")
+          print("\t6. Save to FireBase")
+          print("\t7. Load from FireBase")
+          print("\t8. Start crawling")
+          # op=input("Choose an option [1-8]: ")
+
+      self.msg_input = widgets.Text(
+          placeholder="[1-8]",
+          description="Choose an option [1-8]: :",
+          style={'description_width': "auto"},
+          layout=widgets.Layout(width='20%')
+      )
+      self.send_button = widgets.Button(
+          description="Send",
+          button_style="primary",
+          tooltip="Click to search",
+          style={'description_width': "auto"},
+          icon="send"
+      )
+
+      self.data_input = widgets.Text(
+          placeholder="Enter input",
+          style={'description_width': "auto"},
+          layout=widgets.Layout(width='30%', display='none')
+      )
+      self.data_button = widgets.Button(
+          description="Submit",
+          button_style="primary",
+          tooltip="Click to search",
+          style={'description_width': "auto"},
+          layout=widgets.Layout(display='none'),
+          icon="send"
+      )
+
+      self.results_output = widgets.Output()
+
+      # Attach event handler
+      self.msg_input.on_submit(self.__perform_action)
+      self.send_button.on_click(self.__perform_action)
+      self.data_input.on_submit(self.__doActionOnClick)
+      self.data_button.on_click(self.__doActionOnClick)
+
+      self.gui = widgets.VBox([
+          self.menu_output,
+          widgets.HBox([self.msg_input, self.send_button]),
+          widgets.HBox([self.data_input, self.data_button]),
+          self.results_output
+      ])
+      display(self.gui)
+
+  def __perform_action(self, o):
+
+    self.op = self.msg_input.value.strip()
+    self.results_output.clear_output()
+    with self.results_output:
+
+        self.selectFunc = self.opFunc.get(self.op,None)
+        if self.selectFunc == None:
+          print("Invalid action")
+        else:
+          self.data_input.value=""
+          if (2<= int(self.op) <= 5):
+            self.data_input.description = self.opInputPrompt.get(self.op, "ERROR")
+            self.data_input.value=""
+            self.data_input.layout.display = "flex"
+            self.data_button.layout.display = "flex"
+          else:
+            self.data_input.layout.display = "none"
+            self.data_button.layout.display = "none"
+            self.__toggleDisabled()
+            self.selectFunc()
+            self.__toggleDisabled()
+
+  def __toggleDisabled(self):
+    flag = not self.msg_input.disabled
+    self.msg_input.disabled = flag
+    self.send_button.disabled = flag
+    self.data_input.disabled = flag
+    self.data_button.disabled = flag
+
+
+  def __doActionOnClick(self, q):
+    with self.results_output:
+      if self.selectFunc:
+        self.__toggleDisabled()
+        self.selectFunc()
+        self.__toggleDisabled()
+      else:
+        print("Invalid action")
+    self.data_input.layout.display = "none"
+    self.data_button.layout.display = "none"
+
+  def __printAction(self):
+    print(self.indexService.index_toString())
+
+  def __addWordAction(self):
+    w = self.data_input.value.strip()
+
+    if self.indexService.add_new_word(w):
+      print(f"New word added '{w}': {self.indexService.get_index_of_word(w)}")
+      print("A crawl is needed to build it's index")
+    else:
+      print("The word was already in index")
+
+  def __removeWordAction(self):
+    w = self.data_input.value.strip()
+
+    if self.indexService.remove_word(w):
+      print(f"The word '{w}' was removed from index")
+    else:
+      print(f"The word '{w}' wasn't in the index")
+
+  def __addURLAction(self):
+    u = self.data_input.value.strip()
+    with self.results_output:
+      if not u: #Check if empty
+        print("Empty url")
+      else:
+        msg = self.crawlerService.crawl_single_url(u)
+        print("Crawling result:", msg)
+
+  def __removeURLAction(self):
+    u = self.data_input.value.strip()
+
+    with self.results_output:
+      if self.indexService.remove_url(u):
+        print("Url removed from index")
+      else:
+        print("Url was not in index")
+
+
+  def __saveAction(self):
+    self.indexService.save_in_db()
+
+  def __loadAction(self):
+    self.indexService.load_from_db()
+    print("index loaded from db")
+
+  def __crawlAction(self):
+    self.crawlerService.initCrawlingProcess()
+
 #משימה ששלומי נתן לישראל 31.12.24
 #בוצעה
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import ipywidgets as widgets
-from IPython.display import display
 
-def display_tabs(search_ui, history_service, heatmap_output, bar_chart_output, edit_index_output, chatbot_ui):
+def display_tabs(search_ui, history_service, heatmap_output, bar_chart_output, chatbot_ui, editIndexUI):
     """
-    Creates and displays the tabs containing the search engine, history, and graphs.
+    Creates and displays the tabs containing the search engine, history, and other features.
     """
     # Create a container for the search engine UI in the first tab
     query_service_output = widgets.Output()
     with query_service_output:
         search_ui.display()
 
+    # Get the output widget for the history service
+    history_service_output = history_service.get_output_widget()
+
+    # Create a container for the Chatbot UI
     chatbot_service_output = widgets.Output()
     with chatbot_service_output:
         chatbot_ui.display()
 
+    # Create a container for the Edit Index Menu
+    index_menu_output = widgets.Output()
+    with index_menu_output:
+        editIndexUI.display()
+
     # Create the tabs
     tabs = widgets.Tab(children=(
         query_service_output,
-        history_service,
+        history_service_output,  # Use the output widget from the history service
         heatmap_output,
         bar_chart_output,
-        edit_index_output,
+        index_menu_output,
         chatbot_service_output,
-        ))
+    ))
     tabs.set_title(0, "Query Service")
     tabs.set_title(1, "History Service")
     tabs.set_title(2, "Heatmap")
@@ -911,34 +1240,64 @@ def display_tabs(search_ui, history_service, heatmap_output, bar_chart_output, e
     tabs.set_title(5, "Chatbot")
     display(tabs)
 
-# Assuming GraphService and indexService are already defined
-graphService = GraphService(indexService.get_reverse_index())
+def initGUIProcess(indexService, editIndexUI):
+  queryService = QueryService(indexService)
+  # Assuming GraphService and indexService are already defined
+  graphService = GraphService(indexService.get_reverse_index())
 
-# Generate the outputs for each graph
-heatmap_output = graphService.get_heatmap()
-bar_chart_output = graphService.get_barChart()
+  # Generate the outputs for each graph
+  heatmap_output = graphService.get_heatmap()
+  bar_chart_output = graphService.get_barChart()
 
-# Define the history service output
-history_output = widgets.Output()
-with history_output:
-    print("History Service: Currently empty.")
+  # Define the history service output
+  history_output = SearchHistoryUI()
+  #history_output = widgets.Output()
+  #queryService.query("Default Query")
+  #with history_output:
+   #   print("History Service: Currently empty.")
+    #  print(queryService.get_history())
 
-edit_index_output = widgets.Output()
-with edit_index_output:
-    print("Edit Index Menu: Currently empty.")
+  # edit_index_output = widgets.Output()
+  # with edit_index_output:
+  #     print("Edit Index Menu: Currently empty.")
 
-# Assuming SearchEngineUI and queryService are already defined
-search_ui = SearchEngineUI(queryService)
-chatbot_ui = ChatbotUI(indexService)
+  # Assuming SearchEngineUI and queryService are already defined
+  search_ui = SearchEngineUI(queryService,history_output)
+  chatbot_ui = ChatbotUI(indexService)
 
-# Display the tabs with the search engine and other services
-display_tabs(search_ui, history_output, heatmap_output, bar_chart_output, edit_index_output, chatbot_ui)
+  # SVG URL
+  phoenix_svg_url = "https://raw.githubusercontent.com/ShlomiFridman/PhoenixProject2025/42847053ee0f661c5f25bc0d06ea7daf740e3cde/Project/phoenix-svgrepo-com.svg"
+  ibm_svg_url = "https://raw.githubusercontent.com/ShlomiFridman/PhoenixProject2025/e11c8ccf8c7ffe08da02f4df74393f6472f5bf51/Project/IBM_logo.svg"
 
-"""TODO 3 tabs: search results, graph that shows the rank of each page, graph for the website cover of the query keywords
+  # Embed SVG with resizing
+  svg_resized_html = f'''
+  <div style="display: flex; align-items: center;">
+    <div style="width: 100px; height: 100px;">
+        <img src="{ibm_svg_url}" style="width: 100%; height: 100%;" />
+    </div>
+    &emsp;
+    <div style="width: 100px; height: 100px;">
+        <img src="{phoenix_svg_url}" style="width: 100%; height: 100%;" />
+    </div>
+    <div style="margin-left: 10px; font-size: 20px; font-weight: bold;">
+        Phoenix 2025 Search Engine
+    </div>
+  </div>
+  '''
+  # Display the SVG
+  display(HTML(svg_resized_html))
 
-TODO add the group logo from drive
+  # Display the tabs with the search engine and other services
+  display_tabs(search_ui, history_output, heatmap_output, bar_chart_output, chatbot_ui, editIndexUI)
 
-TODO enable shering, make the link public
+def mainProcess():
+  firebaseService = FirebaseService()
+  indexService = IndexService(firebaseService=firebaseService)
+  indexService.load_from_db()
+  crawlerService = CrawlerService(indexService, maxDepth=10)
+  editIndexUI = EditIndexUI(indexService, crawlerService)
+  initGUIProcess(indexService, editIndexUI)
 
-TODO edit_index: print_index, add_new_word, remove_from_index, add_url, remove_url, get_index_from_db, save_index_in_db, exit menu
-"""
+mainProcess()
+
+"""TODO update graphs on editIndex action"""

@@ -525,11 +525,6 @@ print(query2)
 print(queryService.get_history())
 """
 
-#משימה ששלומי נתן לישראל 31.12.24
-#בוצעה
-
-
-
 class GraphService:
     def __init__(self, rev_index):
         """
@@ -839,10 +834,10 @@ class SearchEngineUI:
 #משימה ששלומי נתן לישראל 31.12.24
 #בוצעה
 
-class SearchHistoryService:
+class SearchHistoryUI:
     def __init__(self):
         """
-        Initializes the SearchHistoryService.
+        Initializes the SearchHistoryUI.
         """
         self.history = []  # List to store search history
         self.history_output = widgets.Output()  # Output widget for displaying history
@@ -1255,7 +1250,7 @@ def initGUIProcess(indexService, editIndexUI):
   bar_chart_output = graphService.get_barChart()
 
   # Define the history service output
-  history_output = SearchHistoryService()
+  history_output = SearchHistoryUI()
   #history_output = widgets.Output()
   #queryService.query("Default Query")
   #with history_output:
@@ -1305,9 +1300,4 @@ def mainProcess():
 
 mainProcess()
 
-"""TODO display history service
-
-TODO enable sharing, make the link public
-
-TODO update graphs on editIndex action
-"""
+"""TODO update graphs on editIndex action"""
