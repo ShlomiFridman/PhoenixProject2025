@@ -168,26 +168,41 @@ class IndexService:
 
   def process_soup(self, url, soup):
     if not soup:
-      print("empty soup")
-      return
+        print("empty soup")
+        return
+
     u_index = index_words(soup)
     u_index = remove_stop_words(u_index)
     u_index = apply_stemming(u_index)
     self.urls_index[url] = u_index
 
     for ind, ind_val in self.rev_index.items():
-      if ind not in u_index:
-        continue
-      elif url in ind_val['DocIDs']:
-        url_i = ind_val["DocIDs"].index(url)
-        del ind_val["DocIDs"][url_i]
-        del ind_val["DocIDs_cntrs"][url_i]
-      if "DocIDs" not in ind_val:
-        ind_val['DocIDs'] = []
-        ind_val['DocIDs_cntrs'] = []
-      ind_val['DocIDs'].append(url)
-      ind_val['DocIDs_cntrs'].append(u_index[ind])
+        if ind not in u_index:
+            continue
+        elif url in ind_val['DocIDs']:
+            url_i = ind_val["DocIDs"].index(url)
+            del ind_val["DocIDs"][url_i]
+            del ind_val["DocIDs_cntrs"][url_i]
 
+            # Ensure 'DocIDs_snippet' exists before attempting to delete or append
+            if 'DocIDs_snippet' in ind_val and len(ind_val['DocIDs_snippet']) > url_i:
+                del ind_val["DocIDs_snippet"][url_i]
+
+        # Initialize lists if they don't exist
+        if "DocIDs" not in ind_val:
+            ind_val['DocIDs'] = []
+        if "DocIDs_cntrs" not in ind_val:
+            ind_val['DocIDs_cntrs'] = []
+        if "DocIDs_snippet" not in ind_val:
+            ind_val['DocIDs_snippet'] = []  # Ensure it's always initialized
+
+        # Append to the lists
+        ind_val['DocIDs'].append(url)
+        ind_val['DocIDs_cntrs'].append(u_index[ind])
+
+        # Create the snippet (first 100 words)
+        snippet = " ".join(soup.get_text().split()[:100])  # Ensure you get the first 100 words from the text
+        ind_val['DocIDs_snippet'].append(snippet)
     return u_index
 
   def get_reverse_index(self):
@@ -202,8 +217,8 @@ class IndexService:
     self.urls_index = {}
 
     for ind, vals in self.rev_index.items():
-      urls = vals['DocIDs']
-      cntrs = vals['DocIDs_cntrs']
+      urls = vals['DocIDs'] if 'DocIDs' in vals else []
+      cntrs = vals['DocIDs_cntrs'] if 'DocIDs_cntrs' in vals else []
       for j in range(len(vals['DocIDs'])):
         if urls[j] not in self.urls_index:
           self.urls_index[urls[j]] = {}
@@ -249,7 +264,9 @@ class IndexService:
       print("IndexService does not have FirebaseService")
   def load_from_db(self):
     if self.firebaseService:
-      self.set_rev_index(self.firebaseService.get_rev_index_from_DB())
+      db_index = self.firebaseService.get_rev_index_from_DB()
+      if db_index:
+        self.set_rev_index(db_index)
     else:
       print("IndexService does not have FirebaseService")
 
@@ -293,7 +310,7 @@ class CrawlerService:
       rp = self.__check_robot(base_url)  # Check the robots.txt file
       urls_to_crawl = [base_url]  # Initialize the queue with the base URL
       current_crawled_urls = set()
-      ignore_urls = ["form", "mp3", "mp4", "downloads"]
+      ignore_urls = ["form", "mp3", "mp4", "downloads", "zip"]
 
       while urls_to_crawl and len(current_crawled_urls) < max_pages:
           current_url = urls_to_crawl.pop(0)
@@ -441,35 +458,44 @@ class QueryService:
     query_words = set(re.findall(r'\w+', query.lower()))
     stemmer = PorterStemmer()
     stemmed_query = set()
-    rev_index = self.indexService.get_reverse_index()
+    rev_index = self.indexService.get_reverse_index()  # Use the correct reverse index here
+
     for word in query_words:
-      stemmed_word = stemmer.stem(word)
-      stemmed_query.add(stemmed_word)
-      #add url to dict
-      if stemmed_word in rev_index:
-        url_res_set.update(rev_index[stemmed_word]["DocIDs"])
+        stemmed_word = stemmer.stem(word)
+        stemmed_query.add(stemmed_word)
+        # Add URLs to the result set if stemmed_word exists in reverse index
+        if stemmed_word in rev_index:
+            url_res_set.update(rev_index[stemmed_word]["DocIDs"])
 
     ranked_url_res = []
     for url_val in url_res_set:
-      ranked_url_res.append({'url':url_val, 'rank':self.rank_url(url_val, stemmed_query)})
+        # Initialize snippet to a default value in case no snippet is found
+        snippet = "No snippet available"
+
+        # Retrieve the snippet for the current URL from the reverse index
+        for ind, ind_val in rev_index.items():  # Use the correct reverse index here
+            if url_val in ind_val['DocIDs']:
+                url_i = ind_val['DocIDs'].index(url_val)
+
+                # Ensure 'DocIDs_snippet' exists and has the snippet for the correct URL
+                if 'DocIDs_snippet' in ind_val and len(ind_val['DocIDs_snippet']) > url_i:
+                    snippet = ind_val['DocIDs_snippet'][url_i]
+                break  # Exit the loop once the snippet is found
+
+        # Append the result with the URL, rank, and snippet
+        ranked_url_res.append({
+            'url': url_val,
+            'rank': self.rank_url(url_val, stemmed_query),
+            'snippet': snippet
+        })
+
+    # Sort the result by rank in descending order
     ranked_url_res = sorted(ranked_url_res, key=lambda item: item['rank'], reverse=True)
     # add result to history
     # self.query_history[query] = ranked_url_res
     # self.query_history.append({'query':query, 'results':ranked_url_res})
     # print(type(ranked_url_res))
     return ranked_url_res
-
-  def __andResults(self, lst1, lst2):
-    res_dict = {item['url']: item['rank'] for item in lst2}
-    intersection = []
-    for item in lst1:
-        url = item['url']
-        if url in res_dict:
-            new_rank = (item['rank'] + res_dict[url])/2
-            intersection.append({'url': url, 'rank': new_rank})
-
-    # Sort the result by rank in descending order
-    return sorted(intersection, key=lambda item: item['rank'], reverse=True)
 
   def __orResults(self, lst1, lst2):
     combined_dict = {}
@@ -787,12 +813,17 @@ class SearchEngineUI:
                 results_df['url'] = results_df['url'].apply(
                     lambda x: f'<a href="{x}" target="_blank">{x}</a>'
                 )
-                numbered_results = [
+                numbered_results = []
+                for i, url in enumerate(results_df['url']):
+                  rank_of_url = (self.current_results[start+i]['rank'])*100
+                  if rank_of_url < 0.01:
+                    rank_of_url = 0.01
+                  numbered_results.append(
                     f'<div style="background-color: {"#f9f9f9" if i % 2 == 0 else "#eaeaea"}; padding: 8px;">'
-                    f"{i + 1 + start}. {url} (match: {(self.current_results[start+i]['rank'])*100:.1f}%)"
+                    f"{i + 1 + start}. {url} (match: {rank_of_url:.2f}%)<br>"
+                    f"<small style='color: gray;'>{(self.current_results[start+i]['snippet'])}...</small>"
                     f"</div>"
-                    for i, url in enumerate(results_df['url'])
-                ]
+                  )
 
                 html = '<div style="text-align: left; font-family: Arial; font-size: 14px;">' + ''.join(
                     numbered_results
@@ -1194,7 +1225,7 @@ class EditIndexUI:
       else:
         msg = self.crawlerService.crawl_single_url(u)
         print("Crawling result:", msg)
-        self.graphService.buildDFs(self.indexService.get_reverse_index())
+        self.graphService.buildDFs()
         print("The graphs got updated")
 
   def __removeURLAction(self):
@@ -1203,7 +1234,7 @@ class EditIndexUI:
     with self.results_output:
       if self.indexService.remove_url(u):
         print("Url removed from index")
-        self.graphService.buildDFs(self.indexService.get_reverse_index())
+        self.graphService.buildDFs()
         print("The graphs got updated")
       else:
         print("Url was not in index")
@@ -1215,14 +1246,14 @@ class EditIndexUI:
   def __loadAction(self):
     self.indexService.load_from_db()
     print("index loaded from db")
-    self.graphService.buildDFs(self.indexService.get_reverse_index())
+    self.graphService.buildDFs() # was ..df(self.indexService.get_reverse_index())
     print("The graphs got updated")
 
   def __crawlAction(self):
     # TODO add try catch for int convert, and send to initCrawling
     num = self.data_input.value.strip()
     self.crawlerService.initCrawlingProcess()
-    self.graphService.buildDFs(self.indexService.get_reverse_index())
+    self.graphService.buildDFs() # was ..df(self.indexService.get_reverse_index())
     print("The graphs got updated")
 
 #משימה ששלומי נתן לישראל 31.12.24
@@ -1311,4 +1342,4 @@ def mainProcess():
 
 mainProcess()
 
-"""TODO update graphs on editIndex action"""
+"""Improve UI"""
