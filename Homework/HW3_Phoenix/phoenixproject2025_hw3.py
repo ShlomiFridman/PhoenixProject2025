@@ -200,8 +200,8 @@ class IndexService:
         ind_val['DocIDs'].append(url)
         ind_val['DocIDs_cntrs'].append(u_index[ind])
 
-        # Create the snippet (first 100 words)
-        snippet = " ".join(soup.get_text().split()[:100])  # Ensure you get the first 100 words from the text
+        # Create the snippet (first 23 words)
+        snippet = " ".join(soup.get_text().split()[:23])  # Ensure you get the first 23 words from the text
         ind_val['DocIDs_snippet'].append(snippet)
     return u_index
 
@@ -1258,14 +1258,14 @@ class EditIndexUI:
   def __loadAction(self):
     self.indexService.load_from_db()
     print("index loaded from db")
-    self.graphService.buildDFs() # was ..df(self.indexService.get_reverse_index())
+    self.graphService.buildDFs()
     print("The graphs got updated")
 
   def __crawlAction(self):
     # TODO add try catch for int convert, and send to initCrawling
     num = self.data_input.value.strip()
     self.crawlerService.initCrawlingProcess()
-    self.graphService.buildDFs() # was ..df(self.indexService.get_reverse_index())
+    self.graphService.buildDFs()
     print("The graphs got updated")
 
 #משימה ששלומי נתן לישראל 31.12.24
