@@ -783,7 +783,7 @@ class SearchEngineUI:
         startTime = time.time()
         # Execute the query and save the results
         self.current_query = query
-        self.current_results = self.query(query)
+        self.current_results = self.query(query.lower())
         self.current_page = 0
 
         # Save the query and results in history service
