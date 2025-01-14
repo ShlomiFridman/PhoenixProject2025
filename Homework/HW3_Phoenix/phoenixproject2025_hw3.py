@@ -445,11 +445,11 @@ class QueryService:
     return self.query_history
 
   def __query_process(self, query):
-    if "AND" in query:
-      ind=query.find("AND")
+    if "and" in query:
+      ind=query.find("and")
       return self.__andResults(self.__query_process(query[:ind]), self.__query_process(query[ind+3:]))
-    elif "OR" in query:
-      ind=query.find("OR")
+    elif "or" in query:
+      ind=query.find("or")
       return self.__orResults(self.__query_process(query[:ind]), self.__query_process(query[ind+2:]))
     return self.__queryByString(query)
 
@@ -469,32 +469,16 @@ class QueryService:
 
     ranked_url_res = []
     for url_val in url_res_set:
-        # Initialize snippet to a default value in case no snippet is found
-        snippet = "No snippet available"
+      snippet = self.get_snippet(url_val)
 
-        # Retrieve the snippet for the current URL from the reverse index
-        for ind, ind_val in rev_index.items():  # Use the correct reverse index here
-            if url_val in ind_val['DocIDs']:
-                url_i = ind_val['DocIDs'].index(url_val)
-
-                # Ensure 'DocIDs_snippet' exists and has the snippet for the correct URL
-                if 'DocIDs_snippet' in ind_val and len(ind_val['DocIDs_snippet']) > url_i:
-                    snippet = ind_val['DocIDs_snippet'][url_i]
-                break  # Exit the loop once the snippet is found
-
-        # Append the result with the URL, rank, and snippet
-        ranked_url_res.append({
-            'url': url_val,
-            'rank': self.rank_url(url_val, stemmed_query),
-            'snippet': snippet
-        })
+      ranked_url_res.append({
+        'url': url_val,
+        'rank': self.rank_url(url_val, stemmed_query),
+        'snippet': snippet
+      })
 
     # Sort the result by rank in descending order
     ranked_url_res = sorted(ranked_url_res, key=lambda item: item['rank'], reverse=True)
-    # add result to history
-    # self.query_history[query] = ranked_url_res
-    # self.query_history.append({'query':query, 'results':ranked_url_res})
-    # print(type(ranked_url_res))
     return ranked_url_res
 
   def __andResults(self, lst1, lst2):
@@ -504,7 +488,8 @@ class QueryService:
         url = item['url']
         if url in res_dict:
             new_rank = (item['rank'] + res_dict[url])/2
-            intersection.append({'url': url, 'rank': new_rank})
+            snippet = self.get_snippet(url)
+            intersection.append({'url': url, 'rank': new_rank, 'snippet': snippet})
 
     # Sort the result by rank in descending order
     return sorted(intersection, key=lambda item: item['rank'], reverse=True)
@@ -513,18 +498,24 @@ class QueryService:
     combined_dict = {}
 
     for item in lst1:
-        url = item['url']
-        rank = item['rank']
-        combined_dict[url] = max(combined_dict.get(url, float('-inf')), rank)
+      url = item['url']
+      rank = item['rank']
+      snippet = item['snippet']
+      combined_dict[url] = {'rank': max(combined_dict.get(url, {'rank': float('-inf')})['rank'], rank), 'snippet': snippet}
+
     for item in lst2:
-        url = item['url']
-        rank = item['rank']
-        combined_dict[url] = max(combined_dict.get(url, float('-inf')), rank)
+      url = item['url']
+      rank = item['rank']
+      snippet = item['snippet']
+      if url in combined_dict:
+        combined_dict[url]['rank'] = max(combined_dict[url]['rank'], rank)
+      else:
+        combined_dict[url] = {'rank': rank, 'snippet': snippet}
 
     return sorted(
-        [{'url': url, 'rank': rank} for url, rank in combined_dict.items()],
-        key=lambda item: item['rank'],
-        reverse=True)
+      [{'url': url, 'rank': data['rank'], 'snippet': data['snippet']} for url, data in combined_dict.items()],
+      key=lambda item: item['rank'],
+      reverse=True)
 
   def rank_url(self, url, query_words):
     rank = 1
@@ -537,6 +528,18 @@ class QueryService:
     rank = 1-rank
     # print(rank)
     return rank
+
+  def get_snippet(self, url_val):
+    rev_index = self.indexService.get_reverse_index()  # Using the correct reverse index
+    snippet = "No Snippet Available"  # Default fallback
+
+    for ind, ind_val in rev_index.items():
+      if url_val in ind_val['DocIDs']:
+        url_i = ind_val['DocIDs'].index(url_val)
+        if 'DocIDs_snippet' in ind_val and len(ind_val['DocIDs_snippet']) > url_i:
+          snippet = ind_val['DocIDs_snippet'][url_i] or snippet
+        break
+    return snippet
 
 """The index we defined"""
 
