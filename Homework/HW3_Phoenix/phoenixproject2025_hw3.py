@@ -497,6 +497,18 @@ class QueryService:
     # print(type(ranked_url_res))
     return ranked_url_res
 
+  def __andResults(self, lst1, lst2):
+    res_dict = {item['url']: item['rank'] for item in lst2}
+    intersection = []
+    for item in lst1:
+        url = item['url']
+        if url in res_dict:
+            new_rank = (item['rank'] + res_dict[url])/2
+            intersection.append({'url': url, 'rank': new_rank})
+
+    # Sort the result by rank in descending order
+    return sorted(intersection, key=lambda item: item['rank'], reverse=True)
+
   def __orResults(self, lst1, lst2):
     combined_dict = {}
 
@@ -703,7 +715,7 @@ class SearchEngineUI:
         """
         desc = widgets.Output()
         with desc:
-          print("To query please enter a text into the field and press the 'Search' button")
+          print("To query please enter text into the field and press the 'Search' button")
           print("Each page in the result is ranked by the amount the query's keywords appear in the page's text")
           print()
         self.queryService = queryService
@@ -821,7 +833,7 @@ class SearchEngineUI:
                   numbered_results.append(
                     f'<div style="background-color: {"#f9f9f9" if i % 2 == 0 else "#eaeaea"}; padding: 8px;">'
                     f"{i + 1 + start}. {url} (match: {rank_of_url:.2f}%)<br>"
-                    f"<small style='color: gray;'>{(self.current_results[start+i]['snippet'])}...</small>"
+                    f"<small style='color: gray;'>{(self.current_results[start + i].get('snippet', 'No snippet available'))}...</small>"
                     f"</div>"
                   )
 
