@@ -720,6 +720,7 @@ class SearchEngineUI:
         with desc:
           print("To query please enter text into the field and press the 'Search' button")
           print("Each page in the result is ranked by the amount the query's keywords appear in the page's text")
+          print("Search for terms learned in class (IBM, AI, SAAS, etc...)")
           print()
         self.queryService = queryService
         self.history_service = history_service  # Link to the history service
@@ -945,77 +946,73 @@ class SearchHistoryUI:
 class ChatbotUI:
 
   def __init__(self, indexService):
-    genai.configure(api_key='AIzaSyDURb6iohpm_goSIdOB9keMvRXnx88D9p8')
-    self.model = genai.GenerativeModel('gemini-1.5-pro')
+    genai.configure(api_key='AIzaSyDzCZQbp6pnPuHE0bzRP37-KP9UVNyC6sY')
+    self.model = genai.GenerativeModel('gemini-1.5-flash')
     self.indexService = indexService
-    self.__initBot()
+    # self.__initBot()
     self.__buildGUI()
     pass
 
   def display(self):
     display(self.gui)
 
-  def __initBot(self):
-    self.term_summaries = {
-        'SAAS': "Software as a Service (SaaS) is a cloud computing model that delivers software applications over the internet, allowing users to access them without needing to install or maintain hardware or software, as everything is managed by the provider.",
-        'PAAS': "Platform as a Service (PaaS) is a cloud computing offering that provides developers with an environment to build, deploy, and manage applications without worrying about the underlying infrastructure, allowing for faster development.",
-        'IAAS': "Infrastructure as a Service (IaaS) is a cloud computing model that provides virtualized computing resources like servers, storage, and networking on demand, offering flexibility and scalability for businesses.",
-        'FAAS': "Function as a Service (FaaS) is a cloud computing model that enables developers to execute code in response to events without managing servers, offering a scalable and cost-efficient way to build applications.",
-        'Private': "Private cloud refers to cloud computing resources used exclusively by one organization, providing greater control, security, and customization compared to public cloud solutions.",
-        'Public': "Public cloud refers to cloud services offered over the public internet by third-party providers, accessible to anyone and known for scalability, cost efficiency, and ease of use.",
-        'Hybrid': "Hybrid cloud combines private and public cloud infrastructures, allowing data and applications to be shared between them, offering flexibility and optimization of existing infrastructure.",
-        'Service': "In computing, service refers to a functionality or resource provided to users or applications, often delivered via cloud computing or network systems.",
-        'Platform': "A platform is a foundation or environment that enables the development, deployment, and management of applications and services, often abstracting underlying infrastructure.",
-        'Infrastructure': "Infrastructure in computing refers to the hardware, software, networks, and facilities required to support the development, deployment, and operation of applications and IT systems.",
-        'Study': "A study refers to a detailed investigation or analysis of a subject or phenomenon, often conducted to gain deeper insights or inform decisions.",
-        'Case': "A case in this context often refers to a specific instance or example studied to understand a phenomenon, process, or system in detail.",
-        'Chatbot': "A chatbot is a software application designed to simulate human conversation, typically using artificial intelligence and natural language processing.",
-        'Engine': "An engine in computing typically refers to a core component or system that performs essential processing or computational tasks, such as a search engine or rendering engine.",
-        'Cloud': "Cloud computing refers to delivering computing services over the internet, including storage, processing, and software, allowing for scalable and on-demand resources.",
-        'Monitor': "Monitoring in IT refers to the continuous observation and analysis of systems, applications, or networks to ensure performance, reliability, and security.",
-        'Data': "Data refers to information, often in digital form, that can be processed, analyzed, and used to make decisions or derive insights.",
-        'Mainframe': "A mainframe is a powerful, high-performance computer used primarily by large organizations for critical applications, bulk data processing, and enterprise resource planning.",
-        'Performance': "Performance in IT refers to the effectiveness and efficiency of a system, application, or network in executing tasks or meeting user requirements.",
-        'Security': "Security in computing refers to measures and practices designed to protect systems, networks, and data from unauthorized access, attacks, or damage.",
-        'SLA': "A Service Level Agreement (SLA) is a formal contract between a service provider and a customer that defines the level of service expected, including performance metrics and responsibilities.",
-        'KPI': "Key Performance Indicators (KPIs) are measurable values that demonstrate how effectively an individual, team, or organization is achieving specific objectives.",
-        'SOA': "Service-Oriented Architecture (SOA) is a software design approach where services are provided to other components through a communication protocol, enabling flexibility and reusability.",
-        'Information': "Information refers to processed, organized, or structured data that is meaningful and useful for decision-making or understanding.",
-        'Kafka': "Apache Kafka is an open-source distributed event streaming platform used for building real-time data pipelines and streaming applications, known for its high throughput and scalability.",
-        'SQL': "Structured Query Language (SQL) is a programming language used for managing and querying relational databases, enabling efficient data manipulation and retrieval.",
-        'Technology': "Technology refers to the application of scientific knowledge for practical purposes, especially in industry, computing, and innovation.",
-        'Database': "A database is an organized collection of data that can be easily accessed, managed, and updated, typically using database management systems.",
-        'Docker': "Docker is a platform for developing, shipping, and running applications in lightweight containers, ensuring consistency across development and production environments.",
-        'Kubernetes': "Kubernetes is an open-source container orchestration platform that automates the deployment, scaling, and management of containerized applications.",
-        'RabbitMQ': "RabbitMQ is an open-source message broker that facilitates communication between distributed systems by queuing and delivering messages reliably.",
-        'IBM': "IBM (International Business Machines Corporation) is a multinational technology company known for its innovations in computing, cloud solutions, and enterprise IT services.",
-        'Google': "Google is a global technology company specializing in internet-related services and products, including search engines, cloud computing, and AI advancements.",
-        'Amazon': "Amazon is a multinational technology company known for its e-commerce, cloud computing services (AWS), and advancements in artificial intelligence.",
-        'AI': "Artificial Intelligence (AI) is a field of computer science focused on creating systems capable of performing tasks that typically require human intelligence, such as learning, reasoning, and problem-solving.",
-        'Artificial': "Artificial refers to something created or simulated by humans, often to replicate natural phenomena or functionalities, such as artificial intelligence.",
-        'Intelligence': "Intelligence refers to the ability to acquire and apply knowledge and skills, often associated with problem-solving and decision-making capabilities in humans or machines."
-    }
+  # def __initBot(self):
+    # self.term_summaries = {
+    #     'SAAS': "Software as a Service (SaaS) is a cloud computing model that delivers software applications over the internet, allowing users to access them without needing to install or maintain hardware or software, as everything is managed by the provider.",
+    #     'PAAS': "Platform as a Service (PaaS) is a cloud computing offering that provides developers with an environment to build, deploy, and manage applications without worrying about the underlying infrastructure, allowing for faster development.",
+    #     'IAAS': "Infrastructure as a Service (IaaS) is a cloud computing model that provides virtualized computing resources like servers, storage, and networking on demand, offering flexibility and scalability for businesses.",
+    #     'FAAS': "Function as a Service (FaaS) is a cloud computing model that enables developers to execute code in response to events without managing servers, offering a scalable and cost-efficient way to build applications.",
+    #     'Private': "Private cloud refers to cloud computing resources used exclusively by one organization, providing greater control, security, and customization compared to public cloud solutions.",
+    #     'Public': "Public cloud refers to cloud services offered over the public internet by third-party providers, accessible to anyone and known for scalability, cost efficiency, and ease of use.",
+    #     'Hybrid': "Hybrid cloud combines private and public cloud infrastructures, allowing data and applications to be shared between them, offering flexibility and optimization of existing infrastructure.",
+    #     'Service': "In computing, service refers to a functionality or resource provided to users or applications, often delivered via cloud computing or network systems.",
+    #     'Platform': "A platform is a foundation or environment that enables the development, deployment, and management of applications and services, often abstracting underlying infrastructure.",
+    #     'Infrastructure': "Infrastructure in computing refers to the hardware, software, networks, and facilities required to support the development, deployment, and operation of applications and IT systems.",
+    #     'Study': "A study refers to a detailed investigation or analysis of a subject or phenomenon, often conducted to gain deeper insights or inform decisions.",
+    #     'Case': "A case in this context often refers to a specific instance or example studied to understand a phenomenon, process, or system in detail.",
+    #     'Chatbot': "A chatbot is a software application designed to simulate human conversation, typically using artificial intelligence and natural language processing.",
+    #     'Engine': "An engine in computing typically refers to a core component or system that performs essential processing or computational tasks, such as a search engine or rendering engine.",
+    #     'Cloud': "Cloud computing refers to delivering computing services over the internet, including storage, processing, and software, allowing for scalable and on-demand resources.",
+    #     'Monitor': "Monitoring in IT refers to the continuous observation and analysis of systems, applications, or networks to ensure performance, reliability, and security.",
+    #     'Data': "Data refers to information, often in digital form, that can be processed, analyzed, and used to make decisions or derive insights.",
+    #     'Mainframe': "A mainframe is a powerful, high-performance computer used primarily by large organizations for critical applications, bulk data processing, and enterprise resource planning.",
+    #     'Performance': "Performance in IT refers to the effectiveness and efficiency of a system, application, or network in executing tasks or meeting user requirements.",
+    #     'Security': "Security in computing refers to measures and practices designed to protect systems, networks, and data from unauthorized access, attacks, or damage.",
+    #     'SLA': "A Service Level Agreement (SLA) is a formal contract between a service provider and a customer that defines the level of service expected, including performance metrics and responsibilities.",
+    #     'KPI': "Key Performance Indicators (KPIs) are measurable values that demonstrate how effectively an individual, team, or organization is achieving specific objectives.",
+    #     'SOA': "Service-Oriented Architecture (SOA) is a software design approach where services are provided to other components through a communication protocol, enabling flexibility and reusability.",
+    #     'Information': "Information refers to processed, organized, or structured data that is meaningful and useful for decision-making or understanding.",
+    #     'Kafka': "Apache Kafka is an open-source distributed event streaming platform used for building real-time data pipelines and streaming applications, known for its high throughput and scalability.",
+    #     'SQL': "Structured Query Language (SQL) is a programming language used for managing and querying relational databases, enabling efficient data manipulation and retrieval.",
+    #     'Technology': "Technology refers to the application of scientific knowledge for practical purposes, especially in industry, computing, and innovation.",
+    #     'Database': "A database is an organized collection of data that can be easily accessed, managed, and updated, typically using database management systems.",
+    #     'Docker': "Docker is a platform for developing, shipping, and running applications in lightweight containers, ensuring consistency across development and production environments.",
+    #     'Kubernetes': "Kubernetes is an open-source container orchestration platform that automates the deployment, scaling, and management of containerized applications.",
+    #     'RabbitMQ': "RabbitMQ is an open-source message broker that facilitates communication between distributed systems by queuing and delivering messages reliably.",
+    #     'IBM': "IBM (International Business Machines Corporation) is a multinational technology company known for its innovations in computing, cloud solutions, and enterprise IT services.",
+    #     'Google': "Google is a global technology company specializing in internet-related services and products, including search engines, cloud computing, and AI advancements.",
+    #     'Amazon': "Amazon is a multinational technology company known for its e-commerce, cloud computing services (AWS), and advancements in artificial intelligence.",
+    #     'AI': "Artificial Intelligence (AI) is a field of computer science focused on creating systems capable of performing tasks that typically require human intelligence, such as learning, reasoning, and problem-solving.",
+    #     'Artificial': "Artificial refers to something created or simulated by humans, often to replicate natural phenomena or functionalities, such as artificial intelligence.",
+    #     'Intelligence': "Intelligence refers to the ability to acquire and apply knowledge and skills, often associated with problem-solving and decision-making capabilities in humans or machines."
+    # }
 
-    self.term_summaries = {
-        k.lower(): v for k, v in self.term_summaries.items()
-    }
+    # self.term_summaries = {
+    #     k.lower(): v for k, v in self.term_summaries.items()
+    # }
 
     # reflections.update(self.term_summaries)
 
     # for t,val in self.indexService.get_reverse_index().items():
     #   term_summaries[t] = self.__queryGENAI(f"explain '{val['term']}', tell me in one paragrath")
-    patterns = [
-        (r"^what is (\w+)$", ["%1"]),
-        (r"^explain (\w+)$", ["%1"]),
-        (r"^(\w+)$", ["%1"]),
-        (r".*", ["Sorry, I did not understand that. I only know terms."]),
-    ]
+    # patterns = [
+    #     (r"^what is (\w+)$", ["%1"]),
+    #     (r"^explain (\w+)$", ["%1"]),
+    #     (r"^(\w+)$", ["%1"]),
+    #     (r".*", ["404"]),
+    # ]
 
-    self.chatbot = Chat(patterns, self.term_summaries)
-
-  # def __queryGENAI(self, query):
-  #   response = self.model.generate_content(query)
-  #   return self.__to_markdown(response.text)
+    # self.chatbot = Chat(patterns, self.term_summaries)
 
   def __buildGUI(self):
 
@@ -1048,7 +1045,7 @@ class ChatbotUI:
         ])
 
   def __perform_send(self, q):
-        msg = self.msg_input.value.strip().lower()
+        msg = self.msg_input.value.strip()
         if not msg:
             with self.results_output:
                 self.results_output.clear_output()
@@ -1060,7 +1057,8 @@ class ChatbotUI:
             self.results_output.clear_output()
             print("Thinking...")
             # Get the results for the message
-            results = self.chatbot.respond(msg) if self.__termInMessage(msg) else "Unknown term"
+            # results = self.chatbot.respond(msg) if self.__termInMessage(msg) else "404"
+            results = self.__getAI_response(msg)
             self.results_output.clear_output()
             if not results:
                 print("No results found for your term.")
@@ -1072,9 +1070,15 @@ class ChatbotUI:
                     response_text = str(results)  # Convert to string if not already
                 display(widgets.HTML(f"<b>Response:</b> {response_text}"))
 
-  def  __to_markdown(self, text):
-    text = text.replace('•', ' *')
-    return Markdown(textwrap.indent(text, '> ', predicate=lambda _: True))
+  def __getAI_response(self, query):
+    msg = "I will give you a message, act as a chatbot related to IBM (with only info from the IBM website)"
+    msg += ", I want you to give an answer that is a summery, with max 10 lines"
+    msg += f". Message (any text after this is the message): {query}"
+    try:
+      response = self.model.generate_content(msg)
+      return response.text
+    except err:
+      return "Sorry, I didn't understand (Genai is tired)"
 
   def __termInMessage(self, msg):
     words = re.findall(r'\b\w+\b', msg)  # Find individual words
