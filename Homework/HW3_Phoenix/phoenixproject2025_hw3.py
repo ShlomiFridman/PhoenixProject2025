@@ -7,14 +7,15 @@ Original file is located at
     https://colab.research.google.com/drive/1jr0vu-Wt5ezfiHlkt-T8EDpim2iGSxX7
 
 github link: https://github.com/ShlomiFridman/PhoenixProject2025
-"""
 
-# from google.colab import drive
-# drive.mount('/content/drive')
+# Install
+"""
 
 !pip install requests beautifulsoup4
 !pip install requests beautifulsoup4 nltk
 !pip install firebase
+
+"""# Imports"""
 
 import requests
 import time
@@ -24,7 +25,6 @@ from urllib.robotparser import RobotFileParser
 from nltk.stem import PorterStemmer
 import re
 from firebase import firebase
-# import spacy
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -38,17 +38,7 @@ from nltk.chat.util import Chat, reflections
 import difflib
 import numpy as np
 
-"""Utils functions"""
-
-# def read_txtfile(fileName):
-#     file_path = '/content/drive/My Drive/' + fileName
-#     with open(file_path, 'r') as file:
-#         allText = ""
-#         for line in file:
-#           allText += line
-#         wordsList =  allText.split()
-#         wordsSet =  set(wordsList)
-#     return wordsSet
+"""# Util functions"""
 
 def index_words(soup):
     index_res = {}
@@ -65,10 +55,7 @@ def index_words(soup):
     return index_res
 
 def remove_stop_words(p_index):
-    # nlp = spacy.load("en_core_web_sm")  # Load a small English model
-    # stop_words = nlp.Defaults.stop_words
     stop_words = {'a', 'an', 'the', 'and', 'or', 'in', 'on', 'at', 'to'}
-    # stop_words = read_txtfile("stopwords_en.txt")
 
     for stop_word in stop_words:
         if stop_word in p_index:
@@ -90,7 +77,7 @@ def apply_stemming(p_index):
 
     return stemmed_index
 
-"""Firebase service"""
+"""# Firebase Service"""
 
 class FirebaseService:
 
@@ -117,7 +104,7 @@ class FirebaseService:
   #     print(f"update made for index_url={k}")
   #   print("Updated given url index in DB")
 
-"""index service for maintain"""
+"""# Index Service"""
 
 class IndexService:
 
@@ -160,6 +147,39 @@ class IndexService:
         'AI',
         'Artificial',
         'Intelligence',
+        'Mining',
+        'vector',
+        'DDoS',
+        'Phishing',
+        'Quantum',
+        'Deep',
+        'Algorithm',
+        'NLP',
+        'Neural',
+        'regression',
+        'Monte Carlo',
+        'Preventive',
+        'CMMS',
+        'Twin',
+        'Automation',
+        'Workflow',
+        'API',
+        'REST',
+        'Interactive',
+        'Serverless',
+        'NoSQL',
+        'Schema',
+        'DevOps',
+        'Israel',
+        'Storage',
+        'Middleware',
+        'Microservice',
+        'Mobile',
+        'Java',
+        'Python',
+        'Architecture',
+        'Malware',
+        'CAPTCHA',
     ]
     self.init_index_vals = index if index else self.default_index_words
     self.stemmer = PorterStemmer()
@@ -217,9 +237,12 @@ class IndexService:
     self.urls_index = {}
 
     for ind, vals in self.rev_index.items():
-      urls = vals['DocIDs'] if 'DocIDs' in vals else []
-      cntrs = vals['DocIDs_cntrs'] if 'DocIDs_cntrs' in vals else []
-      for j in range(len(vals['DocIDs'])):
+      if 'DocIDs' not in vals:
+        vals['DocIDs'] = []
+        vals['DocIDs_cntrs'] = []
+      urls = vals['DocIDs']
+      cntrs = vals['DocIDs_cntrs']
+      for j in range(len(urls)):
         if urls[j] not in self.urls_index:
           self.urls_index[urls[j]] = {}
         self.urls_index[urls[j]][ind] = cntrs[j]
@@ -290,7 +313,7 @@ class IndexService:
     for w in self.init_index_vals:
       self.rev_index[self.stemmer.stem(w)] = {"term":w, "DocIDs": [], "DocIDs_cntrs": []}
 
-"""Crawling service"""
+"""# Crawler Service"""
 
 class CrawlerService:
 
@@ -425,7 +448,7 @@ class CrawlerService:
 
       return links
 
-"""Query Service"""
+"""# Query Service"""
 
 class QueryService:
 
@@ -541,23 +564,7 @@ class QueryService:
         break
     return snippet
 
-"""The index we defined"""
-
-# indexService.load_from_db()
-# print(indexService.index_toString())
-
-"""
-firebaseService = FirebaseService()
-indexService = IndexService(firebaseService=firebaseService)
-indexService.load_from_db()
-crawlerService = CrawlerService(indexService, maxDepth=10)
-queryService = QueryService(indexService)
-query1 = queryService.query("PAAS")
-query2 = queryService.query("SAAS OR PAAS")
-print(query1)
-print(query2)
-print(queryService.get_history())
-"""
+"""# Graph Service"""
 
 class GraphService:
     def __init__(self, indexService, heatmap_output, bar_output):
@@ -711,6 +718,8 @@ class GraphService:
 
       return df
 
+"""# SearchEngineUI"""
+
 class SearchEngineUI:
     def __init__(self, queryService, history_service):
         """
@@ -740,7 +749,7 @@ class SearchEngineUI:
         self.result_count_label = widgets.Label(value="")  # Label for displaying result count
 
         self.current_query = None
-        self.current_results = []
+        # self.current_results = []
         self.current_page = 0
 
         # Attach event handlers
@@ -787,19 +796,19 @@ class SearchEngineUI:
         startTime = time.time()
         # Execute the query and save the results
         self.current_query = query
-        self.current_results = self.query(query.lower())
+        current_results = self.query(query.lower())
         self.current_page = 0
 
         # Save the query and results in history service
         # if self.current_results:
-        self.history_service.save_search(query, self.current_results)
+        self.history_service.save_search(query, current_results)
 
         # Update the result count label
         endTime = time.time()
-        self.update_result_count(len(self.current_results), endTime-startTime)
+        self.update_result_count(len(current_results), endTime-startTime)
 
         # Display the first page of results
-        self.display_page(self.current_page)
+        self.display_page(self.current_page, current_results)
 
     def update_result_count(self, count, time_took):
         """
@@ -807,7 +816,7 @@ class SearchEngineUI:
         """
         self.result_count_label.value = f"Number of results: {count} (took {time_took:.3f} sec)"
 
-    def display_page(self, page):
+    def display_page(self, page, current_results):
         """
         Displays a specific page of results.
         """
@@ -815,11 +824,11 @@ class SearchEngineUI:
             self.results_output.clear_output()
             start = page * 10
             end = start + 10
-            chunk = self.current_results[start:end]
+            chunk = current_results[start:end]
 
             if not chunk:
                 print("No results to display.")
-                self.update_pagination_controls()
+                self.update_pagination_controls([])
                 return
 
             # Convert results to a DataFrame and display clickable links
@@ -831,13 +840,13 @@ class SearchEngineUI:
                 )
                 numbered_results = []
                 for i, url in enumerate(results_df['url']):
-                  rank_of_url = (self.current_results[start+i]['rank'])*100
+                  rank_of_url = (current_results[start+i]['rank'])*100
                   if rank_of_url < 0.01:
                     rank_of_url = 0.01
                   numbered_results.append(
                     f'<div style="background-color: {"#f9f9f9" if i % 2 == 0 else "#eaeaea"}; padding: 8px;">'
                     f"{i + 1 + start}. {url} (match: {rank_of_url:.2f}%)<br>"
-                    f"<small style='color: gray;'>{(self.current_results[start + i].get('snippet', 'No snippet available'))}...</small>"
+                    f"<small style='color: gray;'>{(current_results[start + i].get('snippet', 'No snippet available'))}...</small>"
                     f"</div>"
                   )
 
@@ -847,9 +856,9 @@ class SearchEngineUI:
                 display(HTML(html))
 
         # Update pagination controls
-        self.update_pagination_controls(page)
+        self.update_pagination_controls(current_results, page)
 
-    def update_pagination_controls(self, page=None):
+    def update_pagination_controls(self, current_results=[], page=None):
         """
         Updates the pagination controls based on the current page.
         """
@@ -857,7 +866,7 @@ class SearchEngineUI:
           self.pagination_controls.children = []
           return
 
-        total_pages = (len(self.current_results)) // 10 + (len(self.current_results) % 10 !=0)  # Calculate total pages
+        total_pages = (len(current_results)) // 10 + (len(current_results) % 10 !=0)  # Calculate total pages
 
         # Create Previous and Next buttons
         prev_button = widgets.Button(
@@ -883,6 +892,8 @@ class SearchEngineUI:
 
         # Update the pagination controls layout
         self.pagination_controls.children = [prev_button, label, next_button] if total_pages else []
+
+"""# SearchHistoryUI"""
 
 #משימה ששלומי נתן לישראל 31.12.24
 #בוצעה
@@ -943,6 +954,8 @@ class SearchHistoryUI:
         """
         return self.history_output
 
+"""# ChatbotUI"""
+
 class ChatbotUI:
 
   def __init__(self, indexService):
@@ -955,64 +968,6 @@ class ChatbotUI:
 
   def display(self):
     display(self.gui)
-
-  # def __initBot(self):
-    # self.term_summaries = {
-    #     'SAAS': "Software as a Service (SaaS) is a cloud computing model that delivers software applications over the internet, allowing users to access them without needing to install or maintain hardware or software, as everything is managed by the provider.",
-    #     'PAAS': "Platform as a Service (PaaS) is a cloud computing offering that provides developers with an environment to build, deploy, and manage applications without worrying about the underlying infrastructure, allowing for faster development.",
-    #     'IAAS': "Infrastructure as a Service (IaaS) is a cloud computing model that provides virtualized computing resources like servers, storage, and networking on demand, offering flexibility and scalability for businesses.",
-    #     'FAAS': "Function as a Service (FaaS) is a cloud computing model that enables developers to execute code in response to events without managing servers, offering a scalable and cost-efficient way to build applications.",
-    #     'Private': "Private cloud refers to cloud computing resources used exclusively by one organization, providing greater control, security, and customization compared to public cloud solutions.",
-    #     'Public': "Public cloud refers to cloud services offered over the public internet by third-party providers, accessible to anyone and known for scalability, cost efficiency, and ease of use.",
-    #     'Hybrid': "Hybrid cloud combines private and public cloud infrastructures, allowing data and applications to be shared between them, offering flexibility and optimization of existing infrastructure.",
-    #     'Service': "In computing, service refers to a functionality or resource provided to users or applications, often delivered via cloud computing or network systems.",
-    #     'Platform': "A platform is a foundation or environment that enables the development, deployment, and management of applications and services, often abstracting underlying infrastructure.",
-    #     'Infrastructure': "Infrastructure in computing refers to the hardware, software, networks, and facilities required to support the development, deployment, and operation of applications and IT systems.",
-    #     'Study': "A study refers to a detailed investigation or analysis of a subject or phenomenon, often conducted to gain deeper insights or inform decisions.",
-    #     'Case': "A case in this context often refers to a specific instance or example studied to understand a phenomenon, process, or system in detail.",
-    #     'Chatbot': "A chatbot is a software application designed to simulate human conversation, typically using artificial intelligence and natural language processing.",
-    #     'Engine': "An engine in computing typically refers to a core component or system that performs essential processing or computational tasks, such as a search engine or rendering engine.",
-    #     'Cloud': "Cloud computing refers to delivering computing services over the internet, including storage, processing, and software, allowing for scalable and on-demand resources.",
-    #     'Monitor': "Monitoring in IT refers to the continuous observation and analysis of systems, applications, or networks to ensure performance, reliability, and security.",
-    #     'Data': "Data refers to information, often in digital form, that can be processed, analyzed, and used to make decisions or derive insights.",
-    #     'Mainframe': "A mainframe is a powerful, high-performance computer used primarily by large organizations for critical applications, bulk data processing, and enterprise resource planning.",
-    #     'Performance': "Performance in IT refers to the effectiveness and efficiency of a system, application, or network in executing tasks or meeting user requirements.",
-    #     'Security': "Security in computing refers to measures and practices designed to protect systems, networks, and data from unauthorized access, attacks, or damage.",
-    #     'SLA': "A Service Level Agreement (SLA) is a formal contract between a service provider and a customer that defines the level of service expected, including performance metrics and responsibilities.",
-    #     'KPI': "Key Performance Indicators (KPIs) are measurable values that demonstrate how effectively an individual, team, or organization is achieving specific objectives.",
-    #     'SOA': "Service-Oriented Architecture (SOA) is a software design approach where services are provided to other components through a communication protocol, enabling flexibility and reusability.",
-    #     'Information': "Information refers to processed, organized, or structured data that is meaningful and useful for decision-making or understanding.",
-    #     'Kafka': "Apache Kafka is an open-source distributed event streaming platform used for building real-time data pipelines and streaming applications, known for its high throughput and scalability.",
-    #     'SQL': "Structured Query Language (SQL) is a programming language used for managing and querying relational databases, enabling efficient data manipulation and retrieval.",
-    #     'Technology': "Technology refers to the application of scientific knowledge for practical purposes, especially in industry, computing, and innovation.",
-    #     'Database': "A database is an organized collection of data that can be easily accessed, managed, and updated, typically using database management systems.",
-    #     'Docker': "Docker is a platform for developing, shipping, and running applications in lightweight containers, ensuring consistency across development and production environments.",
-    #     'Kubernetes': "Kubernetes is an open-source container orchestration platform that automates the deployment, scaling, and management of containerized applications.",
-    #     'RabbitMQ': "RabbitMQ is an open-source message broker that facilitates communication between distributed systems by queuing and delivering messages reliably.",
-    #     'IBM': "IBM (International Business Machines Corporation) is a multinational technology company known for its innovations in computing, cloud solutions, and enterprise IT services.",
-    #     'Google': "Google is a global technology company specializing in internet-related services and products, including search engines, cloud computing, and AI advancements.",
-    #     'Amazon': "Amazon is a multinational technology company known for its e-commerce, cloud computing services (AWS), and advancements in artificial intelligence.",
-    #     'AI': "Artificial Intelligence (AI) is a field of computer science focused on creating systems capable of performing tasks that typically require human intelligence, such as learning, reasoning, and problem-solving.",
-    #     'Artificial': "Artificial refers to something created or simulated by humans, often to replicate natural phenomena or functionalities, such as artificial intelligence.",
-    #     'Intelligence': "Intelligence refers to the ability to acquire and apply knowledge and skills, often associated with problem-solving and decision-making capabilities in humans or machines."
-    # }
-
-    # self.term_summaries = {
-    #     k.lower(): v for k, v in self.term_summaries.items()
-    # }
-
-    # reflections.update(self.term_summaries)
-
-    # for t,val in self.indexService.get_reverse_index().items():
-    #   term_summaries[t] = self.__queryGENAI(f"explain '{val['term']}', tell me in one paragrath")
-    # patterns = [
-    #     (r"^what is (\w+)$", ["%1"]),
-    #     (r"^explain (\w+)$", ["%1"]),
-    #     (r"^(\w+)$", ["%1"]),
-    #     (r".*", ["404"]),
-    # ]
-
-    # self.chatbot = Chat(patterns, self.term_summaries)
 
   def __buildGUI(self):
 
@@ -1087,6 +1042,8 @@ class ChatbotUI:
             return True
     return False
 
+"""# EditIndexUI"""
+
 class EditIndexUI:
 
   def __init__(self, indexService, crawlerService, graphService):
@@ -1108,6 +1065,7 @@ class EditIndexUI:
         "3": "Please enter a word to be removed: ",
         "4": "Please enter a url to be added: ",
         "5": "Please enter a url to be removed: ",
+        "8": "Please enter the max depht for each crawling: ",
     }
     self.selectFunc = None
     self.graphService = graphService
@@ -1181,7 +1139,7 @@ class EditIndexUI:
           print("Invalid action")
         else:
           self.data_input.value=""
-          if (2<= int(self.op) <= 5):
+          if (self.op in self.opInputPrompt):
             self.data_input.description = self.opInputPrompt.get(self.op, "ERROR")
             self.data_input.value=""
             self.data_input.layout.display = "flex"
@@ -1270,10 +1228,16 @@ class EditIndexUI:
 
   def __crawlAction(self):
     # TODO add try catch for int convert, and send to initCrawling
-    num = self.data_input.value.strip()
-    self.crawlerService.initCrawlingProcess()
+    try:
+      num = int(self.data_input.value.strip())
+    except:
+      print("Not an integer")
+      return
+    self.crawlerService.initCrawlingProcess(num)
     self.graphService.buildDFs()
     print("The graphs got updated")
+
+"""# InitUI functions"""
 
 #משימה ששלומי נתן לישראל 31.12.24
 #בוצעה
@@ -1303,8 +1267,8 @@ def display_tabs(search_ui, history_service, graphService, chatbot_ui, editIndex
     # Create the tabs
     tabs_toDisplay = [
         {"Search Engine": query_service_output},
-        {"Chatbot": chatbot_service_output},
         {"History": history_service_output},
+        {"Chatbot": chatbot_service_output},
         {"Index Coalitions": graphService.heatmap_output},
         {"Index Total Occurrences": graphService.bar_output},
         {"Index Menu": index_menu_output},
@@ -1350,6 +1314,8 @@ def initGUIProcess(indexService, editIndexUI, graphService):
   # Display the tabs with the search engine and other services
   display_tabs(search_ui, history_output, graphService, chatbot_ui, editIndexUI)
 
+"""# main"""
+
 def mainProcess():
   firebaseService = FirebaseService()
   indexService = IndexService(firebaseService=firebaseService)
@@ -1360,5 +1326,3 @@ def mainProcess():
   initGUIProcess(indexService, editIndexUI, graphService)
 
 mainProcess()
-
-"""Improve UI"""
