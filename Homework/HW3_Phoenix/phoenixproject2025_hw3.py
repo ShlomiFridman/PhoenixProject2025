@@ -760,7 +760,8 @@ class SearchEngineUI:
             button_style="primary",
             tooltip="Click to search",
             icon="search",
-            layout=widgets.Layout(border_radius="20px", width="70px", height="25px")
+            layout=widgets.Layout(border_radius="20px", width="70px", height="25px"),
+            disabled=True
         )
         self.results_output = widgets.Output()
         self.pagination_controls = widgets.HBox([])  # Placeholder for pagination controls
@@ -771,8 +772,9 @@ class SearchEngineUI:
         self.current_page = 0
 
         # Attach event handlers
-        self.query_input.on_submit(self.perform_search)
-        self.search_button.on_click(self.perform_search)
+        # self.query_input.on_submit(self.perform_search)
+        self.query_input.observe(self.__on_text_change, names='value')
+        self.search_button.on_click(self.__perform_search)
 
         # Layout the GUI
         self.gui = widgets.VBox([
@@ -800,7 +802,14 @@ class SearchEngineUI:
             print(f"An error occurred during the query: {e}")
             return []
 
-    def perform_search(self, b):
+    def __on_text_change(self, change):
+        # Disable the button if text is being typed
+        if change.new:
+            self.search_button.disabled = False
+        else:
+            self.search_button.disabled = True
+
+    def __perform_search(self, change):
         """
         Executes the search and displays the first page of results.
         """
