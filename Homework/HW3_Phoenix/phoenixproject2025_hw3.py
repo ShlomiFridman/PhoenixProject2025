@@ -578,15 +578,22 @@ class GraphService:
         self.heatmap_output, self.bar_output = heatmap_output, bar_output
         self.buildDFs()
 
-    def buildDFs(self):
+    def buildDFs(self, min_occurrences=30, min_shared_docs=30):
         """
-        Builds the dataframes for heatmap and bar chart from the reverse index data.
+        Builds the dataframes for heatmap and bar chart from the reverse index data,
+        with filtering applied to limit the data to terms with sufficient occurrences or shared documents.
         """
         rev_index = self.indexService.get_reverse_index()
-        self.index_df_coalition_heatmap = self.__get_shared_docs_dataframe(rev_index)
+
+        # Filter terms in the reverse index based on minimum occurrences
+        filtered_rev_index = {key: value for key, value in rev_index.items() if len(value.get("DocIDs", [])) >= min_occurrences}
+
+        # Build the heatmap data
+        self.index_df_coalition_heatmap = self.__get_shared_docs_dataframe(filtered_rev_index, min_shared_docs)
+
         # Collect data for the heatmap
         webpage_data = defaultdict(lambda: {"words": [], "occurrences": []})
-        for key, value in rev_index.items():
+        for key, value in filtered_rev_index.items():
             doc_ids = value.get("DocIDs", [])
             doc_ids_cntrs = value.get("DocIDs_cntrs", [])
             term = value.get("term", "")
@@ -612,10 +619,17 @@ class GraphService:
         # Create DataFrame for bar chart
         word_totals = self.index_df_urls_heatmap.sum(axis=1).reset_index()
         word_totals.columns = ["word", "occurrences"]
+
+        # Filter out words with less than the minimum occurrences
+        word_totals = word_totals[word_totals["occurrences"] >= min_occurrences]
+
         self.index_df_bar = word_totals
 
+        # Build the visualizations
         self.build_heatmap()
         self.build_barChart()
+
+
 
     def build_heatmap(self):
       """
@@ -683,40 +697,43 @@ class GraphService:
 
 
 
-    def __get_shared_docs_dataframe(self, reverse_index):
-      """
-      Creates a dataframe of shared documents between terms.
-      Only retains the lower triangle of the matrix, and sets the upper triangle (including the diagonal) to 0 or NaN.
-      """
+    def __get_shared_docs_dataframe(self, reverse_index, min_shared_docs):
+        """
+        Creates a dataframe of shared documents between terms,
+        only retaining the lower triangle of the matrix, and setting the upper triangle (including the diagonal) to 0 or NaN.
+        Filters out pairs with shared document counts below the specified threshold.
+        """
+        # Function to count shared documents between two lists of DocIDs
+        count_shared_docs = lambda docs1, docs2: len(set(docs1) & set(docs2))
 
-      # Function to count shared documents between two lists of DocIDs
-      count_shared_docs = lambda docs1, docs2: len(set(docs1) & set(docs2))
+        # Getting the list of indices (terms)
+        indices = list(reverse_index.keys())
+        data = {}
 
-      # Getting the list of indices (terms)
-      indices = list(reverse_index.keys())
-      data = {}
+        # Loop through each pair of indices and compute shared document counts
+        for index1 in indices:
+            data[reverse_index[index1]["term"]] = {}
+            for index2 in indices:
+                shared_docs_count = count_shared_docs(
+                    reverse_index[index1]["DocIDs"], reverse_index[index2]["DocIDs"]
+                )
+                # Store values below the diagonal, set above diagonal and diagonal to 0
+                if indices.index(index1) < indices.index(index2):
+                    # Only store shared document counts above the minimum threshold
+                    data[reverse_index[index1]["term"]][reverse_index[index2]["term"]] = (
+                        shared_docs_count if shared_docs_count >= min_shared_docs else 0
+                    )
+                else:
+                    data[reverse_index[index1]["term"]][reverse_index[index2]["term"]] = 0
 
-      # Loop through each pair of indices and compute shared document counts
-      for index1 in indices:
-          data[reverse_index[index1]["term"]] = {}
-          for index2 in indices:
-              shared_docs_count = count_shared_docs(
-                  reverse_index[index1]["DocIDs"], reverse_index[index2]["DocIDs"]
-              )
-              # Store values below the diagonal, set above diagonal and diagonal to 0
-              if indices.index(index1) < indices.index(index2):
-                  data[reverse_index[index1]["term"]][reverse_index[index2]["term"]] = shared_docs_count
-              else:
-                  data[reverse_index[index1]["term"]][reverse_index[index2]["term"]] = 0
+        # Convert the dictionary to DataFrame
+        df = pd.DataFrame(data)
 
-      # Convert the dictionary to DataFrame
-      df = pd.DataFrame(data)
+        # Mask the upper triangle (including diagonal) to be zero
+        mask = np.triu(np.ones_like(df, dtype=bool))  # Creates an upper triangle mask
+        df = df.mask(mask)  # Apply the mask to zero out the upper triangle
 
-      # Mask the upper triangle (including diagonal) to be zero
-      mask = np.triu(np.ones_like(df, dtype=bool))  # Creates an upper triangle mask
-      df = df.mask(mask)  # Apply the mask to zero out the upper triangle
-
-      return df
+        return df
 
 """# SearchEngineUI"""
 
@@ -742,14 +759,15 @@ class SearchEngineUI:
             description="Search",
             button_style="primary",
             tooltip="Click to search",
-            icon="search"
+            icon="search",
+            layout=widgets.Layout(border_radius="20px", width="70px", height="25px")
         )
         self.results_output = widgets.Output()
         self.pagination_controls = widgets.HBox([])  # Placeholder for pagination controls
         self.result_count_label = widgets.Label(value="")  # Label for displaying result count
 
         self.current_query = None
-        # self.current_results = []
+        self.current_results = []
         self.current_page = 0
 
         # Attach event handlers
@@ -796,19 +814,19 @@ class SearchEngineUI:
         startTime = time.time()
         # Execute the query and save the results
         self.current_query = query
-        current_results = self.query(query.lower())
+        self.current_results = self.query(query.lower())
         self.current_page = 0
 
         # Save the query and results in history service
         # if self.current_results:
-        self.history_service.save_search(query, current_results)
+        self.history_service.save_search(query, self.current_results)
 
         # Update the result count label
         endTime = time.time()
-        self.update_result_count(len(current_results), endTime-startTime)
+        self.update_result_count(len(self.current_results), endTime-startTime)
 
         # Display the first page of results
-        self.display_page(self.current_page, current_results)
+        self.display_page(self.current_page)
 
     def update_result_count(self, count, time_took):
         """
@@ -816,7 +834,7 @@ class SearchEngineUI:
         """
         self.result_count_label.value = f"Number of results: {count} (took {time_took:.3f} sec)"
 
-    def display_page(self, page, current_results):
+    def display_page(self, page):
         """
         Displays a specific page of results.
         """
@@ -824,11 +842,11 @@ class SearchEngineUI:
             self.results_output.clear_output()
             start = page * 10
             end = start + 10
-            chunk = current_results[start:end]
+            chunk = self.current_results[start:end]
 
             if not chunk:
                 print("No results to display.")
-                self.update_pagination_controls([])
+                self.update_pagination_controls()
                 return
 
             # Convert results to a DataFrame and display clickable links
@@ -840,13 +858,13 @@ class SearchEngineUI:
                 )
                 numbered_results = []
                 for i, url in enumerate(results_df['url']):
-                  rank_of_url = (current_results[start+i]['rank'])*100
+                  rank_of_url = (self.current_results[start+i]['rank'])*100
                   if rank_of_url < 0.01:
                     rank_of_url = 0.01
                   numbered_results.append(
                     f'<div style="background-color: {"#f9f9f9" if i % 2 == 0 else "#eaeaea"}; padding: 8px;">'
                     f"{i + 1 + start}. {url} (match: {rank_of_url:.2f}%)<br>"
-                    f"<small style='color: gray;'>{(current_results[start + i].get('snippet', 'No snippet available'))}...</small>"
+                    f"<small style='color: gray;'>{(self.current_results[start + i].get('snippet', 'No snippet available'))}...</small>"
                     f"</div>"
                   )
 
@@ -856,9 +874,9 @@ class SearchEngineUI:
                 display(HTML(html))
 
         # Update pagination controls
-        self.update_pagination_controls(current_results, page)
+        self.update_pagination_controls(page)
 
-    def update_pagination_controls(self, current_results=[], page=None):
+    def update_pagination_controls(self, page=None):
         """
         Updates the pagination controls based on the current page.
         """
@@ -866,22 +884,31 @@ class SearchEngineUI:
           self.pagination_controls.children = []
           return
 
-        total_pages = (len(current_results)) // 10 + (len(current_results) % 10 !=0)  # Calculate total pages
+        total_pages = (len(self.current_results)) // 10 + (len(self.current_results) % 10 !=0)  # Calculate total pages
 
         # Create Previous and Next buttons
         prev_button = widgets.Button(
             description="Previous",
             icon="arrow-left",
             button_style="info",
-            disabled=(page == 0)  # Disable if on the first page
+            disabled=(page == 0),  # Disable if on the first page
+            layout=widgets.Layout(
+                border_radius="20px",  # Rounder corners
+                width="70px",  # Smaller button width
+                height="25px"  # Smaller button height
+            )
         )
         next_button = widgets.Button(
             description="Next",
             icon="arrow-right",
             button_style="info",
-            disabled=(page == total_pages - 1)  # Disable if on the last page
+            disabled=(page == total_pages - 1) , # Disable if on the last page
+            layout=widgets.Layout(
+                border_radius="20px",  # Rounder corners
+                width="70px",  # Smaller button width
+                height="25px"  # Smaller button height
+            )
         )
-
         # Attach event handlers
         prev_button.on_click(lambda b: self.display_page(page - 1))
         next_button.on_click(lambda b: self.display_page(page + 1))
@@ -984,7 +1011,9 @@ class ChatbotUI:
             description="Send",
             button_style="primary",
             tooltip="Click to search",
-            icon="send"
+            icon="send",
+            layout=widgets.Layout(border_radius="20px", width="70px", height="25px")
+
         )
         self.results_output = widgets.Output()
 
@@ -1088,20 +1117,21 @@ class EditIndexUI:
           placeholder="[1-8]",
           description="Choose an option [1-8]: :",
           style={'description_width': "auto"},
-          layout=widgets.Layout(width='20%')
+          layout=widgets.Layout(width='40%')
       )
       self.send_button = widgets.Button(
           description="Send",
           button_style="primary",
           tooltip="Click to search",
           style={'description_width': "auto"},
-          icon="send"
+          icon="send",
+          layout=widgets.Layout(border_radius="20px", width="70px", height="30px")
       )
 
       self.data_input = widgets.Text(
           placeholder="Enter input",
           style={'description_width': "auto"},
-          layout=widgets.Layout(width='30%', display='none')
+          layout=widgets.Layout(width='50%', display='none')
       )
       self.data_button = widgets.Button(
           description="Submit",
@@ -1250,32 +1280,142 @@ def display_tabs(search_ui, history_service, graphService, chatbot_ui, editIndex
     query_service_output = widgets.Output()
     with query_service_output:
         search_ui.display()
+    query_service_output.layout = widgets.Layout()
+    query_service_output.add_class("search-ui-container")  # Add custom class for search_ui
 
     # Get the output widget for the history service
     history_service_output = history_service.get_output_widget()
+    history_service_output.add_class("history-ui-container")  # Add custom class for history_service
 
     # Create a container for the Chatbot UI
     chatbot_service_output = widgets.Output()
     with chatbot_service_output:
         chatbot_ui.display()
+    chatbot_service_output.add_class("chatbot-ui-container")  # Add custom class for chatbot_ui
 
     # Create a container for the Edit Index Menu
     index_menu_output = widgets.Output()
     with index_menu_output:
         editIndexUI.display()
+    index_menu_output.add_class("edit-index-ui-container")  # Add custom class for editIndexUI
+
+    # Create containers for graphService outputs
+    heatmap_output_container = widgets.Output()
+    with heatmap_output_container:
+        display(graphService.heatmap_output)
+    heatmap_output_container.add_class("graph-ui-container")
+
+    bar_output_container = widgets.Output()
+    with bar_output_container:
+        display(graphService.bar_output)
+    bar_output_container.add_class("graph-ui-container")
 
     # Create the tabs
     tabs_toDisplay = [
         {"Search Engine": query_service_output},
         {"History": history_service_output},
         {"Chatbot": chatbot_service_output},
-        {"Index Coalitions": graphService.heatmap_output},
-        {"Index Total Occurrences": graphService.bar_output},
+        {"Index Coalitions": heatmap_output_container},
+        {"Index Total Occurrences": bar_output_container},
         {"Index Menu": index_menu_output},
     ]
     tabs = widgets.Tab(children=tuple(value for tab in tabs_toDisplay for value in tab.values()))
-    for i,k in enumerate([key for tab in tabs_toDisplay for key in tab.keys()]):
-      tabs.set_title(i, k)
+    for i, k in enumerate([key for tab in tabs_toDisplay for key in tab.keys()]):
+        tabs.set_title(i, k)
+
+    # Inject custom CSS for the tabs and their content areas
+    custom_css = """
+    <style>
+        /* Style for the tab buttons */
+        .p-TabBar-tab {
+            background-color: #F9F9F9 !important; /* Light blue background */
+            border-radius: 10px;
+            margin: 2px;
+            padding: 5px;
+        }
+        .p-TabBar-tab.p-mod-active {
+            background-color: #f0f0f0 !important; /* Slightly darker blue for active tab */
+        }
+        .p-TabBar-tab:hover {
+            background-color: #E6EBFF !important; /* Lighter blue for hover effect */
+        }
+
+        /* Style for the tab content areas */
+        .widget-tab-contents {
+            background-color: #f0f0f0; /* Very light blue background for content */
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+
+
+        /* Style for the search bar */
+          input[type="text"] {
+              border-radius: 20px !important;
+              padding: 8px;
+              border: 1px solid #ccc;
+              width: 90%;
+          }
+
+          /* Style for buttons */
+          .widget-button {
+              border-radius: 20px !important; /* Rounder corners */
+              font-size: 12px; /* Adjust font size for smaller button */
+              font-weight: bold;
+              text-align: center;
+              display: flex; /* Use flexbox */
+              align-items: center; /* Vertically center text */
+              justify-content: center; /* Horizontally center text */
+          }
+
+          /* Optional: Add hover effects */
+          .widget-button:hover {
+              background-color: #A1A1A1 !important;
+          }
+
+
+
+
+        /* Custom style for search_ui container */
+        .search-ui-container {
+            background-color: #f9f9ff; /* Very very light gray background */
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        /* Custom style for history_service container */
+        .history-ui-container {
+            background-color: #f9f9ff; /* Very light gray background */
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        /* Custom style for chatbot_ui container */
+        .chatbot-ui-container {
+            background-color: #f9f9ff; /* Very light blue background */
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        /* Custom style for editIndexUI container */
+        .edit-index-ui-container {
+            background-color: #f9f9ff; /* Neutral gray background */
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        /* Custom style for graphService containers */
+        .graph-ui-container {
+            background-color: #f9f9ff; /* Very light purple background */
+            padding: 20px;
+            border-radius: 10px;
+        }
+    </style>
+    """
+
+    display(HTML(custom_css))
+
+    # Display the tabs
     display(tabs)
 
 def initGUIProcess(indexService, editIndexUI, graphService):
@@ -1293,23 +1433,39 @@ def initGUIProcess(indexService, editIndexUI, graphService):
   phoenix_svg_url = "https://raw.githubusercontent.com/ShlomiFridman/PhoenixProject2025/42847053ee0f661c5f25bc0d06ea7daf740e3cde/Project/phoenix-svgrepo-com.svg"
   ibm_svg_url = "https://raw.githubusercontent.com/ShlomiFridman/PhoenixProject2025/e11c8ccf8c7ffe08da02f4df74393f6472f5bf51/Project/IBM_logo.svg"
 
-  # Embed SVG with resizing
+    # Embed SVG with resizing
   svg_resized_html = f'''
   <div style="display: flex; align-items: center;">
-    <div style="width: 100px; height: 100px;">
-        <img src="{ibm_svg_url}" style="width: 100%; height: 100%;" />
-    </div>
-    &emsp;
-    <div style="width: 100px; height: 100px;">
-        <img src="{phoenix_svg_url}" style="width: 100%; height: 100%;" />
-    </div>
-    <div style="margin-left: 10px; font-size: 20px; font-weight: bold;">
-        Phoenix 2025 Search Engine
-    </div>
+      <div style="width: 100px; height: 100px;">
+          <img src="{ibm_svg_url}" style="width: 100%; height: 100%;" />
+      </div>
+      &emsp;
+      <div style="width: 100px; height: 100px;">
+          <img src="{phoenix_svg_url}" style="width: 100%; height: 100%;" />
+      </div>
+      <div style="margin-left: 10px; font-size: 20px; font-weight: bold;">
+          Phoenix 2025 Search Engine
+      </div>
   </div>
   '''
-  # Display the SVG
-  display(HTML(svg_resized_html))
+
+  # Gradient background styling
+  style_block = '''
+  <style>
+      body {
+        margin: 0; /* Remove default margin */
+        padding: 0; /* Remove default padding */
+        height: 100vh; /* Make the body span the full viewport height */
+        background: linear-gradient(to bottom right, lightblue, orange);
+        background-repeat: no-repeat; /* Prevent gradient from repeating */
+        background-attachment: fixed; /* Keep background fixed during scrolling */
+      }
+  </style>
+  '''
+
+  # Display everything
+  full_html = f"{style_block}{svg_resized_html}"
+  display(HTML(full_html))
 
   # Display the tabs with the search engine and other services
   display_tabs(search_ui, history_output, graphService, chatbot_ui, editIndexUI)
