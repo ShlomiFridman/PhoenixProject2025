@@ -81,7 +81,7 @@ def apply_stemming(p_index):
 
 class FirebaseService:
 
-  def __init__(self, db_url = 'https://phoenixhw2-default-rtdb.europe-west1.firebasedatabase.app/'):
+  def __init__(self, db_url = 'https://projectdb-9ccce-default-rtdb.europe-west1.firebasedatabase.app/'):
     self.FBconn = firebase.FirebaseApplication(db_url,None)
 
   def get_rev_index_from_DB(self):
