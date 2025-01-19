@@ -204,6 +204,9 @@ class IndexService:
     self.urls_index = {}
 
     for ind, vals in self.rev_index.items():
+      if 'DocIDs' not in vals:
+        vals['DocIDs'] = []
+        vals['DocIDs_cntrs'] = []
       urls = vals['DocIDs']
       cntrs = vals['DocIDs_cntrs']
       for j in range(len(vals['DocIDs'])):
@@ -279,7 +282,7 @@ class IndexService:
 
 class CrawlerService:
 
-  def __init__(self, indexService, baseURLs=set(['https://www.ibm.com/us-en', 'https://www.ibm.com/topics']) ,maxDepth=100):
+  def __init__(self, indexService, baseURLs=set(['https://www.ibm.com/us-en', 'https://www.ibm.com/topics']) ,maxDepth=10):
     self.indexService = indexService
     self.maxDepth = maxDepth
     self.resetService()
@@ -291,7 +294,7 @@ class CrawlerService:
       self.crawl_website(url, self.maxDepth)
 
     # Function to crawl a website and fetch n pages
-  def crawl_website(self, base_url, max_pages=100):
+  def crawl_website(self, base_url, max_pages=10):
       rp = self.__check_robot(base_url)  # Check the robots.txt file
       urls_to_crawl = [base_url]  # Initialize the queue with the base URL
       current_crawled_urls = set()
