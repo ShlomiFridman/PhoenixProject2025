@@ -342,7 +342,11 @@ class CrawlerService:
               continue  # Skip already crawled URLs
 
           print(f"Crawling {self.crawled_count+1}: {current_url}")
-          page_content = self.__fetch_page_crawler(current_url, rp)
+          try:
+            page_content = self.__fetch_page_crawler(current_url, rp)
+          except:
+            print("Failed to crawl with robot, trying without")
+            page_content = self.__fetch_page_crawler(current_url)
 
           if page_content:
               self.crawled_urls.add(current_url)
@@ -369,10 +373,9 @@ class CrawlerService:
   def crawl_single_url(self, url):
       if url in self.crawled_urls:
         return "Url was already crawled"
-      self.baseURLs.add(url)
-      rp = self.__check_robot(url)  # Check the robots.txt file
+      # rp = self.__check_robot(url)  # Check the robots.txt file
       print(f"Crawling {self.crawled_count+1}: {url}")
-      page_content = self.__fetch_page_crawler(url, rp)
+      page_content = self.__fetch_page_crawler(url)
 
       if page_content:
         self.crawled_urls.add(url)
@@ -381,6 +384,7 @@ class CrawlerService:
         soup = BeautifulSoup(page_content, 'html.parser')
         self.indexService.process_soup(url, soup)
         time.sleep(2)  # Sleep for 2 seconds between requests (politeness)
+        self.baseURLs.add(url)
         return "Url was crawled successfully"
       else:
         return "Cannot crawl given url"
@@ -397,6 +401,7 @@ class CrawlerService:
 
   # Function to fetch and parse the robots.txt file to check permissions
   def __check_robot(self, url):
+      # print(f"__check_robot url='{url}'")
       robot_url = urljoin(url, '/robots.txt')
       rp = RobotFileParser()
       rp.set_url(robot_url)
@@ -407,9 +412,9 @@ class CrawlerService:
       return rp if rp else self.robot
 
   # Function to fetch and parse a page
-  def __fetch_page_crawler(self, url, rp):
+  def __fetch_page_crawler(self, url, rp=None):
       # Check if the URL is allowed to be crawled according to robots.txt
-      if not rp.can_fetch('*', url):  # '*' means all user agents
+      if rp and not rp.can_fetch('*', url):  # '*' means all user agents
           print(f"Blocked by robots.txt: {url}")
           return None
 
@@ -747,6 +752,7 @@ class SearchEngineUI:
           print("To query please enter text into the field and press the 'Search' button")
           print("Each page in the result is ranked by the amount the query's keywords appear in the page's text")
           print("Search for terms learned in class (IBM, AI, SAAS, etc...)")
+          print("There is support for AND and OR operators")
           print()
         self.queryService = queryService
         self.history_service = history_service  # Link to the history service
@@ -1202,7 +1208,10 @@ class EditIndexUI:
     with self.results_output:
       if self.selectFunc:
         self.__toggleDisabled()
-        self.selectFunc()
+        if self.selectFunc() != -1:
+          print("Starting to update the graphs")
+          self.graphService.buildDFs()
+          print("The graphs got updated")
         self.__toggleDisabled()
       else:
         print("Invalid action")
@@ -1218,20 +1227,18 @@ class EditIndexUI:
     if self.indexService.add_new_word(w):
       print(f"New word added '{w}': {self.indexService.get_index_of_word(w)}")
       print("A crawl is needed to build its index")
-      self.graphService.buildDFs()
-      print("The graphs got updated")
     else:
       print("The word was already in index")
+      return -1
 
   def __removeWordAction(self):
     w = self.data_input.value.strip()
 
     if self.indexService.remove_word(w):
       print(f"The word '{w}' was removed from index")
-      self.graphService.buildDFs()
-      print("The graphs got updated")
     else:
       print(f"The word '{w}' wasn't in the index")
+      return -1
 
   def __addURLAction(self):
     u = self.data_input.value.strip()
@@ -1241,8 +1248,6 @@ class EditIndexUI:
       else:
         msg = self.crawlerService.crawl_single_url(u)
         print("Crawling result:", msg)
-        self.graphService.buildDFs()
-        print("The graphs got updated")
 
   def __removeURLAction(self):
     u = self.data_input.value.strip()
@@ -1250,10 +1255,9 @@ class EditIndexUI:
     with self.results_output:
       if self.indexService.remove_url(u):
         print("Url removed from index")
-        self.graphService.buildDFs()
-        print("The graphs got updated")
       else:
         print("Url was not in index")
+        return -1
 
 
   def __saveAction(self):
@@ -1262,8 +1266,6 @@ class EditIndexUI:
   def __loadAction(self):
     self.indexService.load_from_db()
     print("index loaded from db")
-    self.graphService.buildDFs()
-    print("The graphs got updated")
 
   def __crawlAction(self):
     # TODO add try catch for int convert, and send to initCrawling
@@ -1271,10 +1273,12 @@ class EditIndexUI:
       num = int(self.data_input.value.strip())
     except:
       print("Not an integer")
-      return
-    self.crawlerService.initCrawlingProcess(num)
-    self.graphService.buildDFs()
-    print("The graphs got updated")
+      return -1
+    try:
+      self.crawlerService.initCrawlingProcess(num)
+    except Exception as err:
+      print(f"Crawling failed: {err}")
+      return -1
 
 """# InitUI functions"""
 
@@ -1445,7 +1449,7 @@ def initGUIProcess(indexService, editIndexUI, graphService):
     # Embed SVG with resizing
   svg_resized_html = f'''
   <div style="display: flex; align-items: center;">
-      <div style="width: 100px; height: 100px;">
+      &emsp;<div style="width: 100px; height: 100px;">
           <img src="{ibm_svg_url}" style="width: 100%; height: 100%;" />
       </div>
       &emsp;
