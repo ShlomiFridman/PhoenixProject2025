@@ -879,7 +879,7 @@ class SearchEngineUI:
                   numbered_results.append(
                     f'<div style="background-color: {"#f9f9f9" if i % 2 == 0 else "#eaeaea"}; padding: 8px;">'
                     f"{i + 1 + start}. {url} (match: {rank_of_url:.2f}%)<br>"
-                    f"<small style='color: gray;'>{(self.current_results[start + i].get('snippet', 'No snippet available'))}...</small>"
+                    f"<span style='color: gray;'>{(self.current_results[start + i].get('snippet', 'No snippet available'))}...</span>"
                     f"</div>"
                   )
 
