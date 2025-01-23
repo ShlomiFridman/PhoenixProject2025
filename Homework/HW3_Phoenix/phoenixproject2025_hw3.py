@@ -486,7 +486,7 @@ class QueryService:
     query_words = set(re.findall(r'\w+', query.lower()))
     stemmer = PorterStemmer()
     stemmed_query = set()
-    rev_index = self.indexService.get_reverse_index()  # Use the correct reverse index here
+    rev_index = self.indexService.get_reverse_index()
 
     for word in query_words:
         stemmed_word = stemmer.stem(word)
@@ -583,7 +583,7 @@ class GraphService:
         self.heatmap_output, self.bar_output = heatmap_output, bar_output
         self.buildDFs()
 
-    def buildDFs(self, min_occurrences=30, min_shared_docs=30):
+    def buildDFs(self, min_occurrences=80, min_shared_docs=80):
         """
         Builds the dataframes for heatmap and bar chart from the reverse index data,
         with filtering applied to limit the data to terms with sufficient occurrences or shared documents.
@@ -800,10 +800,8 @@ class SearchEngineUI:
     def query(self, query_str):
         """Executes a query and returns the results."""
         try:
-            results = self.queryService.query(query_str)  # Assuming queryService.query() returns a list of JSON results
-            # Sort results by rank in descending order
-            sorted_results = sorted(results, key=lambda x: x['rank'], reverse=True)
-            return sorted_results
+            results = self.queryService.query(query_str)
+            return results
         except Exception as e:
             print(f"An error occurred during the query: {e}")
             return []
@@ -945,6 +943,9 @@ class SearchHistoryUI:
         """
         Initializes the SearchHistoryUI.
         """
+        self.infoText = "Here you can view the last five queries you've made, and the top ten results for each.\n"
+        self.infoText += "They are ordered as such: 1 - the latest query, 5 - the oldest query.\n"
+        self.infoText += "Click on the row to view the query's result.\n\n"
         self.history = []  # List to store search history
         self.history_output = widgets.Output()  # Output widget for displaying history
         with self.history_output:
@@ -964,6 +965,7 @@ class SearchHistoryUI:
         """
         with self.history_output:
             self.history_output.clear_output()
+            print(self.infoText)
 
             if not self.history:
                 print("No recent searches available.")
@@ -1117,7 +1119,10 @@ class EditIndexUI:
   def display(self):
       self.menu_output = widgets.Output()
       with self.menu_output:
-          print("\nMenu:")
+          print("To select an option, enter the option's number in the field below.")
+          print("If there is a need for further input you will be prompt to enter it in the second field.")
+          print()
+          print("\nIndex Edit Menu:")
           print("\t1. Print index")
           print("\t2. Add a new word to index")
           print("\t3. Remove word from index")
@@ -1268,7 +1273,6 @@ class EditIndexUI:
     print("index loaded from db")
 
   def __crawlAction(self):
-    # TODO add try catch for int convert, and send to initCrawling
     try:
       num = int(self.data_input.value.strip())
     except:
@@ -1329,7 +1333,7 @@ def display_tabs(search_ui, history_service, graphService, chatbot_ui, editIndex
         {"History": history_service_output},
         {"Chatbot": chatbot_service_output},
         {"Index Coalitions": heatmap_output_container},
-        {"Index Total Occurrences": bar_output_container},
+        {"Index Occurrences": bar_output_container},
         {"Index Menu": index_menu_output},
     ]
     tabs = widgets.Tab(children=tuple(value for tab in tabs_toDisplay for value in tab.values()))
