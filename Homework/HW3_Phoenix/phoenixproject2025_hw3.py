@@ -1111,7 +1111,7 @@ class EditIndexUI:
         "3": "Please enter a word to be removed: ",
         "4": "Please enter a url to be added: ",
         "5": "Please enter a url to be removed: ",
-        "8": "Please enter the max depht for each crawling: ",
+        "8": "Please enter the max depth for each crawling: ",
     }
     self.selectFunc = None
     self.graphService = graphService
