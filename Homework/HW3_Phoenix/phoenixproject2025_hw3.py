@@ -572,7 +572,7 @@ class QueryService:
 """# Graph Service"""
 
 class GraphService:
-    def __init__(self, indexService, heatmap_output, bar_output):
+    def __init__(self, indexService, heatmap_output, bar_output, min_occurrences=80, min_shared_docs=80):
         """
         Initializes the GraphService with the reverse index data.
         """
@@ -580,10 +580,12 @@ class GraphService:
         self.index_df_coalition_heatmap = None
         self.index_df_urls_heatmap = None
         self.index_df_bar = None
+        self.min_occurrences = min_occurrences
+        self.min_shared_docs = min_shared_docs
         self.heatmap_output, self.bar_output = heatmap_output, bar_output
         self.buildDFs()
 
-    def buildDFs(self, min_occurrences=80, min_shared_docs=80):
+    def buildDFs(self):
         """
         Builds the dataframes for heatmap and bar chart from the reverse index data,
         with filtering applied to limit the data to terms with sufficient occurrences or shared documents.
@@ -591,10 +593,10 @@ class GraphService:
         rev_index = self.indexService.get_reverse_index()
 
         # Filter terms in the reverse index based on minimum occurrences
-        filtered_rev_index = {key: value for key, value in rev_index.items() if len(value.get("DocIDs", [])) >= min_occurrences}
+        filtered_rev_index = {key: value for key, value in rev_index.items() if len(value.get("DocIDs", [])) >= self.min_occurrences}
 
         # Build the heatmap data
-        self.index_df_coalition_heatmap = self.__get_shared_docs_dataframe(filtered_rev_index, min_shared_docs)
+        self.index_df_coalition_heatmap = self.__get_shared_docs_dataframe(filtered_rev_index, self.min_shared_docs)
 
         # Collect data for the heatmap
         webpage_data = defaultdict(lambda: {"words": [], "occurrences": []})
@@ -626,7 +628,7 @@ class GraphService:
         word_totals.columns = ["word", "occurrences"]
 
         # Filter out words with less than the minimum occurrences
-        word_totals = word_totals[word_totals["occurrences"] >= min_occurrences]
+        word_totals = word_totals[word_totals["occurrences"] >= self.min_occurrences]
 
         self.index_df_bar = word_totals
 
@@ -646,6 +648,7 @@ class GraphService:
           self.heatmap_output.clear_output()
           print("Heatmap: Shared URLs between Indexes")
           print("The value at each cell [i,j] is the amount of shared urls between index i and index j")
+          print(f"# The graph only displays the indexes that have at least {self.min_shared_docs} shared URLs with another index")
 
           # Retrieve the matrix with only the lower triangle
           df = self.index_df_coalition_heatmap
@@ -684,15 +687,16 @@ class GraphService:
         """
         with self.bar_output:
             self.bar_output.clear_output()
-            print("Bar Chart: Word Occurrences Across Webpages")
+            print("Bar Chart: Word Occurrences Across IBM")
             print("The value of index i is the total amount of occurrences that index showed up in the pages")
+            print(f"# The graph only shows the indexes with at least {self.min_occurrences} occurrences across IBM")
 
             # Sort the DataFrame in descending order of occurrences
             sorted_df = self.index_df_bar.sort_values(by="occurrences", ascending=False)
 
             plt.figure(figsize=(14, 8))
             sns.barplot(data=sorted_df, x="word", y="occurrences", hue="word", palette="viridis")
-            plt.title("Bar Chart: Word Occurrences Across Webpages (Sorted)", fontsize=16)
+            plt.title("Bar Chart: Word Occurrences Across IBM", fontsize=16)
             plt.xlabel("Words", fontsize=14)
             plt.ylabel("Occurrences", fontsize=14)
             plt.xticks(rotation=45, fontsize=10)
