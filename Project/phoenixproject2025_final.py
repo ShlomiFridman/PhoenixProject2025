@@ -537,7 +537,7 @@ class QueryService:
         url = item['url']
         if url in res_dict:
             new_rank = (item['rank'] + res_dict[url])/2
-            snippet = self.get_snippet(url)
+            snippet = self.indexService.get_snippet(url)
             intersection.append({'url': url, 'rank': new_rank, 'snippet': snippet})
 
     # Sort the result by rank in descending order
